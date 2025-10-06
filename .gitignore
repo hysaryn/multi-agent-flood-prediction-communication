@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+venv/
+.env
+*.log
+
+# ChromaDB vector database
+chroma_db/
+
+# React/Node.js
+node_modules/
+build/
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+*.swp
+.idea
+
+# API keys and secrets
+*.key
+*.pem
+secrets.json
