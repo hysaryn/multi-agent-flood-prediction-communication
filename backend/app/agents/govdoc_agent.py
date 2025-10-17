@@ -7,6 +7,8 @@
 # ---------------------------------------------------------
 from dotenv import load_dotenv 
 load_dotenv(override=True)
+import requests
+from app.tools.storage import purge_keep_last_n, slugify_place
 
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.messages import TextMessage
@@ -30,6 +32,14 @@ from urllib.parse import urlparse
 from typing import List, Optional
 import os, re, json, asyncio
 
+from ..tools.downloader import download
+from ..tools.text_extractor import extract_text
+from ..tools.models import DocRef
+
+# ---------------------------------------------------------
+# Storage cleanup: keep last 2 accessed files per place_key
+# ---------------------------------------------------------
+purge_keep_last_n(n=0)
 # ---------------------------------------------------------
 # MCP INSTRUCTION TEMPLATE
 # ---------------------------------------------------------
@@ -66,7 +76,7 @@ HARD LIMITS (DO NOT VIOLATE):
 
 Procedure (follow exactly):
 1) SEARCH once:
-   "{place}" flood plan OR flood preparedness OR flood mitigation filetype:pdf
+   "{place}" flood preparedness OR flood mitigation filetype:pdf
    If too few results, run ONE more SEARCH:
    (site:canada.ca OR site:gc.ca OR site:gov.bc.ca OR site:*.ca) "{place}" flood plan OR preparedness OR mitigation filetype:pdf
 
@@ -197,6 +207,24 @@ class GovDocAgent(RoutedAgent):
             model_client=OpenAIChatCompletionClient(model="gpt-4o-mini"),
         )
 
+    def _seems_pdf_by_head(self, url: str, timeout=12) -> bool:
+        try:
+            # 先 HEAD，很多站允许；不行再 GET(流式)
+            r = requests.head(url, timeout=timeout, allow_redirects=True,
+                            headers={"User-Agent": "flood-agent/1.0"})
+            ct = r.headers.get("content-type", "").lower()
+            if "pdf" in ct:
+                return True
+        except Exception:
+            pass
+        try:
+            r = requests.get(url, stream=True, timeout=timeout, allow_redirects=True,
+                            headers={"User-Agent": "flood-agent/1.0"})
+            ct = r.headers.get("content-type", "").lower()
+            return "pdf" in ct
+        except Exception:
+            return False
+
     @message_handler
     async def on_govdoc_request(self, message: Message, ctx: MessageContext) -> Message:
         """Handle requests to search for government flood preparedness PDFs."""
@@ -205,6 +233,7 @@ class GovDocAgent(RoutedAgent):
         raw_place = (loc.location.query or loc.location.display_name or "Canada").strip()
         parts = [p.strip() for p in raw_place.split(",") if p.strip()]
         place = parts[0] if parts else "Canada"
+        place = slugify_place(place) 
         print(f"[GovDocAgent] place = {place}")
 
         # 2) Search and filter results
@@ -214,9 +243,65 @@ class GovDocAgent(RoutedAgent):
         if os.getenv("OPENAI_API_KEY") and links:
             links = await self._llm_rerank_and_summarize(links, loc.location, ctx)
 
-        # 4) Return structured JSON
-        payload = GovDocResponse(location=loc.location, results=links)
-        return Message(content=payload.model_dump_json(ensure_ascii=False))
+        pdf_urls = []
+        for l in links[:5]:  # Limit to top 5 to avoid too many requests
+            u = l.url.strip()
+            
+            # Method 1: Check if MCP already identified it as PDF
+            if (l.filetype or "").lower() == "pdf":
+                pdf_urls.append(u)
+                print(f"[GovDoc] ✅ PDF (by filetype): {u}")
+                continue
+            
+            # Method 2: URL ends with .pdf
+            if u.lower().endswith(".pdf"):
+                pdf_urls.append(u)
+                print(f"[GovDoc] ✅ PDF (by extension): {u}")
+                continue
+            
+            # Method 3: Do HEAD/GET to check content-type
+            print(f"[GovDoc] 🔍 Checking content-type: {u}")
+            try:
+                if self._seems_pdf_by_head(u, timeout=10):
+                    pdf_urls.append(u)
+                    print(f"[GovDoc] ✅ PDF (by content-type): {u}")
+                else:
+                    print(f"[GovDoc] ❌ Not a PDF: {u}")
+            except Exception as e:
+                print(f"[GovDoc] ⚠️  Could not check {u}: {e}")
+                # If we can't verify, but it's from results, try downloading anyway
+                if l.score > 2.0:  # High-scoring results
+                    pdf_urls.append(u)
+                    print(f"[GovDoc] 🤷 Adding anyway (high score)")
+        # 去重并限量
+        seen = set()
+        pdf_urls = [u for u in pdf_urls if not (u in seen or seen.add(u))][:5]
+        doc_refs: list[DocRef] = []
+        for u in pdf_urls:
+            # try:
+            #     meta = download(u, source="GovDocAgent", place_key=place)
+            #     meta = extract_text(meta)
+            #     doc_refs.append(DocRef(url=meta.url, title=meta.title or "", clean_path=meta.clean_path, place_key=place))
+            # except Exception as e:
+            #     print(f"[GovDocAgent] download/extract failed for {u}: {e}")
+            try:
+                meta = download(u, source="GovDocAgent", place_key=place)
+                meta = extract_text(meta)
+                doc_refs.append(DocRef(url=meta.url, title=meta.title or "", 
+                                    clean_path=meta.clean_path, place_key=place))
+                print(f"[GovDoc] ✅ Downloaded: {u}")
+            except requests.exceptions.SSLError as e:
+                print(f"[GovDoc] ❌ SSL error for {u}: {e}")
+                # Could add to a "failed_urls" list for retry later
+            except Exception as e:
+                print(f"[GovDoc] ❌ Download failed for {u}: {e}")
+        # 4) Build final payload
+        payload = {
+            "location": loc.location.model_dump(mode='json'),
+            "results": [l.model_dump(mode='json') for l in links],
+            "docs": [d.model_dump(mode='json') for d in doc_refs],
+        }
+        return Message(content=json.dumps(payload, ensure_ascii=False))
 
     async def _resolve_location(self, raw: str, ctx: MessageContext) -> LocationResult:
         """Resolve a location name or coordinates to structured location info."""
@@ -283,13 +368,23 @@ class GovDocAgent(RoutedAgent):
     def _is_gov_or_official(self, url: str) -> bool:
         """Check if a URL belongs to an official government domain."""
         h = (urlparse(url).hostname or "").lower()
-        if any(h.endswith(s) for s in (".gov", ".gc.ca", ".canada.ca", ".gov.bc.ca", ".us", ".gov.uk", ".gov.au", ".gouv.fr")):
+        if any(h.endswith(s) for s in (".gov", ".gc.ca", ".gov.uk", ".gov.au", ".gouv.fr")):
             return True
         if h.endswith(".ca") and re.search(r"(city|municipal|regional|vancouver|toronto|ottawa)", h):
             return True
         if re.search(r"(cityof)[a-z\-]+", h):
             return True
         return False
+
+
+def fetch_docs(urls: list[str], place: str, source: str = "Prepared") -> list[DocRef]:
+    docs: list[DocRef] = []
+    for u in urls:
+        meta = download(u, source=source,place_key=place)
+        meta = extract_text(meta)
+        docs.append(DocRef(url=meta.url, title=meta.title, clean_path=meta.clean_path, place_key=place))
+    return docs
+         
 
 
 # ---------------------------------------------------------
@@ -305,16 +400,15 @@ async def maybe_await(x):
 # ---------------------------------------------------------
 # Entry point for testing the agent directly
 # ---------------------------------------------------------
-async def main():
+async def main(): 
     runtime = SingleThreadedAgentRuntime()
 
     # Register the GovDoc agent into the runtime
     await GovDocAgent.register(runtime, "GovDoc", lambda: GovDocAgent(runtime))
-
     await maybe_await(runtime.start())
 
     # Test: ask the GovDoc agent to search for flood-related docs
-    resp = await runtime.send_message(Message(content="Animas River"), AgentId("GovDoc", "default"))
+    resp = await runtime.send_message(Message(content="Vancouver"), AgentId("GovDoc", "default"))
     print(resp.content)
 
     await maybe_await(runtime.stop())
