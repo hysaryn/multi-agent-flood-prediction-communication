@@ -208,8 +208,7 @@ class GovDocAgent(RoutedAgent):
         )
 
     def _seems_pdf_by_head(self, url: str, timeout=12) -> bool:
-        try:
-            # 先 HEAD，很多站允许；不行再 GET(流式)
+        try:   
             r = requests.head(url, timeout=timeout, allow_redirects=True,
                             headers={"User-Agent": "flood-agent/1.0"})
             ct = r.headers.get("content-type", "").lower()
@@ -273,7 +272,7 @@ class GovDocAgent(RoutedAgent):
                 if l.score > 2.0:  # High-scoring results
                     pdf_urls.append(u)
                     print(f"[GovDoc] 🤷 Adding anyway (high score)")
-        # 去重并限量
+        # Deduplicate and limit to 5 PDFs
         seen = set()
         pdf_urls = [u for u in pdf_urls if not (u in seen or seen.add(u))][:5]
         doc_refs: list[DocRef] = []

@@ -7,13 +7,13 @@ class DocMeta(BaseModel):
     place_key: str 
     title: str | None = None
     content_type: str
-    sha256: str            # 基于URL或内容的指纹
+    sha256: str             
     bytes: int
     status: int
     retrieved_at: datetime
     last_accessed_at: datetime
-    raw_path: str          # backend/action plan docs/raw/xxx
-    clean_path: str        # backend/action plan docs/clean/xxx
+    raw_path: str           
+    clean_path: str         
 
 class DocRef(BaseModel):
     url: HttpUrl

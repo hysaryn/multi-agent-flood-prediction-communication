@@ -1,15 +1,13 @@
 from bs4 import BeautifulSoup
 from pathlib import Path
-import io
 from .models import DocMeta
+import fitz
 
 def extract_text(meta: DocMeta) -> DocMeta:
     raw = Path(meta.raw_path)
     text_out = Path(meta.clean_path)
 
     if "pdf" in meta.content_type.lower() or raw.suffix.lower() == ".pdf":
-        # 轻量PDF解析：PyMuPDF/ pdfminer 更好；这里给占位
-        import fitz  # PyMuPDF
         doc = fitz.open(raw)
         text = "\n".join(page.get_text() for page in doc)
     else:

@@ -34,7 +34,6 @@ def write_manifest_line(meta: DocMeta) -> None:
         f.write(meta.model_dump_json() + "\n")
 
 def url_exists(url: str) -> Dict | None:
-    # 简单线性查找；如数据多可换成 sqlite/键值索引
     for row in load_manifest():
         if row.get("url") == url:
             return row
@@ -59,9 +58,8 @@ def build_paths(place_key: str, url: str, content_type: str) -> tuple[str, str]:
     ext = ".pdf" if "pdf" in content_type.lower() or url.lower().endswith(".pdf") else ".html"
     return str(raw_dir / f"{stem}{ext}"), str(clean_dir / f"{stem}.txt")
 
-# —— 清理策略 ——
+
 def purge_place(place_key: str) -> int:
-    """删除某个地点的 raw/clean 文件夹并从 manifest 中移除对应记录。"""
     target = BASE / place_key
     count = 0
     if target.exists():
@@ -72,7 +70,6 @@ def purge_place(place_key: str) -> int:
                     count += 1
             except Exception:
                 pass
-        # 尝试删除空目录
         for p in sorted(target.rglob("*"), reverse=True):
             if p.is_dir():
                 try: p.rmdir()
@@ -80,7 +77,6 @@ def purge_place(place_key: str) -> int:
         try: target.rmdir()
         except Exception: pass
 
-    # 过滤 manifest
     rows = load_manifest()
     kept = [r for r in rows if r.get("place_key") != place_key]
     if len(kept) != len(rows):
@@ -100,9 +96,7 @@ def purge_all_except(keep_places: Iterable[str]) -> None:
             purge_place(place)
 
 def purge_keep_last_n(n: int = 2) -> None:
-    """按 last_accessed_at（地点粒度）保留最近 n 个地点，其余删除。"""
     rows = load_manifest()
-    # 计算每个 place 的最新访问时间
     latest: dict[str, float] = {}
     for r in rows:
         pk = r.get("place_key")
