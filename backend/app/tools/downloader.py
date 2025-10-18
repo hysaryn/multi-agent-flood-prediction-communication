@@ -1,7 +1,7 @@
 import requests
 from datetime import datetime
 from pathlib import Path
-from .models import DocMeta
+from ..models.govdoc_models import DocMeta
 from .storage import build_paths, write_manifest_line, url_exists, register_access
 
 def download(url: str, source: str, place_key: str) -> DocMeta:

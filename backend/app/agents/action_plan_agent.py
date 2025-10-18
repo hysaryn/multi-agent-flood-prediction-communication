@@ -9,7 +9,7 @@ from autogen_core import (
     message_handler,
 )
 
-from app.agents.common import Message
+from backend.app.models.message_model import Message
 from pathlib import Path
 from typing import List, Dict
 import json
@@ -17,7 +17,7 @@ import asyncio
 from datetime import datetime
 
 # Import your models (adjust path as needed)
-from app.tools.action_plan_models import Action, ActionPlanResponse
+from backend.app.models.action_plan_models import Action, ActionPlanResponse
 
 
 class ActionPlanAgent(RoutedAgent):

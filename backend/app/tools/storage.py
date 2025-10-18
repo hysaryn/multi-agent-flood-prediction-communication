@@ -2,7 +2,7 @@ from pathlib import Path
 import hashlib, json, re, time
 from datetime import datetime
 from typing import Iterable, Dict
-from .models import DocMeta
+from ..models.govdoc_models import DocMeta
 
 BASE = Path("action-plan-docs")
 MANIFEST = BASE / "manifest.jsonl"

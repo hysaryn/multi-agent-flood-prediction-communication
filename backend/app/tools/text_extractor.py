@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup
 from pathlib import Path
-from .models import DocMeta
+from ..models.govdoc_models import DocMeta
 import fitz
 
 def extract_text(meta: DocMeta) -> DocMeta:

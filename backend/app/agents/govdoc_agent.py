@@ -25,7 +25,7 @@ from agents import Agent, Runner, trace
 from pydantic import BaseModel
 
 # Use unified Pydantic Message model
-from app.agents.common import Message
+from backend.app.models.message_model import Message
 from app.services.location_service import get_location_info, LocationInfo, LocationResult
 
 from urllib.parse import urlparse
@@ -34,7 +34,7 @@ import os, re, json, asyncio
 
 from ..tools.downloader import download
 from ..tools.text_extractor import extract_text
-from ..tools.models import DocRef
+from ..models.govdoc_models import DocRef
 
 # ---------------------------------------------------------
 # Storage cleanup: keep last 2 accessed files per place_key
