@@ -7,6 +7,8 @@ import uvicorn
 from app.services.rag_service import RAGService
 from app.services.weather_service import WeatherService
 from app.services.social_media_service import SocialMediaService
+from app.services.predictor_service import ValidatedFloodPredictor
+
 
 app = FastAPI(title="Flood Prediction Communication System", version="1.0.0")
 
