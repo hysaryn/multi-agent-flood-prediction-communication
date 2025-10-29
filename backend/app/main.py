@@ -48,6 +48,11 @@ class SocialMediaResponse(BaseModel):
     sentiment: str
     key_topics: List[str]
 
+class FloodAlertResponse(BaseModel):
+    us_alerts: dict
+    canada_alerts: dict
+    summary: dict
+
 @app.get("/")
 async def root():
     return {"message": "Flood Prediction Communication System API"}
@@ -107,6 +112,99 @@ async def get_social_media_summary():
             sentiment=sentiment,
             key_topics=topics
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/flood-alerts", response_model=FloodAlertResponse)
+async def get_government_flood_alerts(
+    us_states: str = None,
+    canada_provinces: str = None
+):
+    """Get live flood alerts from government sources (US and Canada)"""
+    try:
+        # Parse location parameters
+        us_locations = None
+        canada_locations = None
+        
+        if us_states:
+            # Parse comma-separated state:county pairs
+            us_locations = []
+            for location in us_states.split(','):
+                if ':' in location:
+                    state, county = location.split(':', 1)
+                    us_locations.append((state.strip().upper(), county.strip()))
+                else:
+                    us_locations.append((location.strip().upper(), None))
+        
+        if canada_provinces:
+            # Parse comma-separated province:city pairs
+            canada_locations = []
+            for location in canada_provinces.split(','):
+                if ':' in location:
+                    province, city = location.split(':', 1)
+                    canada_locations.append((province.strip().upper(), city.strip()))
+                else:
+                    canada_locations.append((location.strip().upper(), None))
+        
+        # Get flood alerts
+        alerts_data = await weather_service.get_government_flood_alerts(
+            us_locations=us_locations,
+            canada_locations=canada_locations
+        )
+        
+        if "error" in alerts_data:
+            raise HTTPException(status_code=500, detail=alerts_data["error"])
+        
+        return FloodAlertResponse(
+            us_alerts=alerts_data.get("us", {}),
+            canada_alerts=alerts_data.get("canada", {}),
+            summary=alerts_data.get("summary", {})
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/flood-alerts/display")
+async def get_flood_alerts_display(
+    us_states: str = None,
+    canada_provinces: str = None
+):
+    """Get formatted flood alerts for display"""
+    try:
+        # Parse location parameters
+        us_locations = None
+        canada_locations = None
+        
+        if us_states:
+            us_locations = []
+            for location in us_states.split(','):
+                if ':' in location:
+                    state, county = location.split(':', 1)
+                    us_locations.append((state.strip().upper(), county.strip()))
+                else:
+                    us_locations.append((location.strip().upper(), None))
+        
+        if canada_provinces:
+            canada_locations = []
+            for location in canada_provinces.split(','):
+                if ':' in location:
+                    province, city = location.split(':', 1)
+                    canada_locations.append((province.strip().upper(), city.strip()))
+                else:
+                    canada_locations.append((location.strip().upper(), None))
+        
+        # Get flood alerts
+        alerts_data = await weather_service.get_government_flood_alerts(
+            us_locations=us_locations,
+            canada_locations=canada_locations
+        )
+        
+        if "error" in alerts_data:
+            return {"error": alerts_data["error"]}
+        
+        # Format for display
+        formatted_output = weather_service.flood_alert_agent.format_alerts_for_display(alerts_data)
+        
+        return {"formatted_alerts": formatted_output}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
