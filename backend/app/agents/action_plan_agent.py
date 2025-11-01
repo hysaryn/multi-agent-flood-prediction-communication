@@ -1,3 +1,4 @@
+# python -m app.agents.action_plan_agent
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.messages import TextMessage
 from autogen_ext.models.openai import OpenAIChatCompletionClient
@@ -9,28 +10,27 @@ from autogen_core import (
     message_handler,
 )
 
-from backend.app.models.message_model import Message
+from app.models.message_model import Message
 from pathlib import Path
 from typing import List, Dict
 import json
 import asyncio
 from datetime import datetime
 
-# Import your models (adjust path as needed)
-from backend.app.models.action_plan_models import Action, ActionPlanResponse
+
+from app.models.action_plan_models import Action, ActionPlanResponse
 
 
 class ActionPlanAgent(RoutedAgent):
     """
-    Agent that generates structured flood action plans from government documents.
+    Summarizer Agent: Extracts structured actions from government documents.
     
-    Workflow:
-    1. Receives location query
-    2. Calls GovDocAgent to get documents
-    3. Reads cleaned text from downloaded PDFs
-    4. Extracts actions using LLM
-    5. Categorizes into before/during/after phases
-    6. Returns structured action plan
+    Workflow (SEQUENTIAL):
+    1. Receives location info + documents from GovDocAgent
+    2. Reads cleaned text from downloaded PDFs
+    3. Extracts actions using LLM
+    4. Categorizes into before/during/after phases
+    5. Returns structured action plan
     """
     
     def __init__(self, runtime: SingleThreadedAgentRuntime):
@@ -49,36 +49,53 @@ class ActionPlanAgent(RoutedAgent):
     @message_handler
     async def on_action_plan_request(self, message: Message, ctx: MessageContext) -> Message:
         """
-        Main handler: Generate action plan for a location.
+        Main handler: Generate action plan from documents.
         
-        Input message.content: location query (e.g., "Vancouver", "Ottawa")
+        Input message.content: Complete GovDocAgent output JSON:
+        {
+            "location": {
+                "query": "Vancouver, BC",
+                "display_name": "Burnaby, British Columbia, Canada",
+                "latitude": 49.2827,
+                "longitude": -123.1207,
+                ...
+            },
+            "results": [...],  // Search results metadata
+            "docs": [
+                {
+                    "url": "https://...",
+                    "title": "...",
+                    "clean_path": "/path/to/extracted.txt",
+                    "place_key": "vancouver-bc"
+                }
+            ]
+        }
+        
         Output: JSON string with ActionPlanResponse
         """
-        location_query = message.content.strip()
-        print(f"[ActionPlanAgent] Generating plan for: {location_query}")
-        
         try:
-            # Step 1: Get documents from GovDocAgent
-            print(f"[ActionPlanAgent] Calling GovDocAgent...")
-            govdoc_response = await self._runtime.send_message(
-                Message(content=location_query),
-                AgentId("GovDoc", "default")
-            )
+            # ====== CHANGED: Accept full GovDocAgent output ======
+            input_data = json.loads(message.content)
             
-            govdoc_data = json.loads(govdoc_response.content)
-            location_info = govdoc_data.get("location", {})
-            docs = govdoc_data.get("docs", [])
+            # Extract location info from nested structure
+            location_info = input_data.get("location", {})
+            location_query = location_info.get("query") or location_info.get("display_name", "Unknown")
+            display_name = location_info.get("display_name")
             
+            # Extract documents
+            docs = input_data.get("docs", [])
+            
+            print(f"[ActionPlanAgent] Generating plan for: {location_query}")
+            print(f"[ActionPlanAgent] Received {len(docs)} documents")
+
             if not docs:
-                print(f"[ActionPlanAgent] No documents found for {location_query}")
+                print(f"[ActionPlanAgent] No documents provided for {location_query}")
                 return Message(content=json.dumps({
-                    "error": "No documents found",
+                    "error": "No documents provided",
                     "location": location_query
                 }))
             
-            print(f"[ActionPlanAgent] Found {len(docs)} documents")
-            
-            # Step 2: Read all document texts
+            # Step 1: Read all document texts (same as before)
             doc_texts = []
             for doc in docs:
                 clean_path = doc.get("clean_path")
@@ -102,7 +119,7 @@ class ActionPlanAgent(RoutedAgent):
                     "location": location_query
                 }))
             
-            # Step 3: Extract actions from all documents
+            # Step 2: Extract actions from all documents (same as before)
             print(f"[ActionPlanAgent] Extracting actions from {len(doc_texts)} documents...")
             all_actions = []
             
@@ -113,15 +130,15 @@ class ActionPlanAgent(RoutedAgent):
             
             print(f"[ActionPlanAgent] Total actions extracted: {len(all_actions)}")
             
-            # Step 4: Categorize into before/during/after
+            # Step 3: Categorize into before/during/after (same as before)
             before, during, after = self._categorize_by_phase(all_actions)
             
             print(f"[ActionPlanAgent] Categorized: Before={len(before)}, During={len(during)}, After={len(after)}")
             
-            # Step 5: Build final response
+            # Step 4: Build final response
             response = ActionPlanResponse(
                 location=location_query,
-                display_name=location_info.get("display_name"),
+                display_name=display_name,  # Use provided display_name
                 before_flood=before,
                 during_flood=during,
                 after_flood=after,
@@ -133,13 +150,20 @@ class ActionPlanAgent(RoutedAgent):
             
             return Message(content=response.model_dump_json(indent=2))
         
+        except json.JSONDecodeError as e:
+            print(f"[ActionPlanAgent] ❌ Invalid JSON input: {e}")
+            return Message(content=json.dumps({
+                "error": f"Invalid JSON input: {str(e)}",
+                "hint": "Expected JSON with 'location', 'display_name', and 'docs' fields"
+            }))
+        
         except Exception as e:
             print(f"[ActionPlanAgent] ❌ Error: {e}")
             import traceback
             traceback.print_exc()
             return Message(content=json.dumps({
                 "error": str(e),
-                "location": location_query
+                "location": input_data.get("location", "Unknown") if 'input_data' in locals() else "Unknown"
             }))
     
     async def _extract_actions_from_doc(self, doc: Dict, ctx: MessageContext) -> List[Action]:
@@ -272,7 +296,7 @@ async def maybe_await(x):
 
 
 async def main():
-    """Test the ActionPlanAgent"""
+    """Test the ActionPlanAgent in SEQUENTIAL mode"""
     from app.agents.govdoc_agent import GovDocAgent
     
     runtime = SingleThreadedAgentRuntime()
@@ -283,20 +307,33 @@ async def main():
     
     await maybe_await(runtime.start())
     
-    # Test with a location
     print("=" * 60)
-    print("Testing ActionPlanAgent with Vancouver")
+    print("Testing SEQUENTIAL Architecture")
     print("=" * 60)
     
-    response = await runtime.send_message(
-        Message(content="Vancouver, BC"),
+    # ====== STEP 1: Call GovDocAgent ======
+    print("\n[STEP 1] Calling GovDocAgent...")
+    govdoc_response = await runtime.send_message(
+        Message(content="Vnancouver, BC"),
+        AgentId("GovDoc", "default")
+    )
+    
+    govdoc_data = json.loads(govdoc_response.content)
+    print(f"[STEP 1] ✅ Received {len(govdoc_data.get('docs', []))} documents")
+    
+    # ====== STEP 2: Call ActionPlanAgent with FULL GovDoc output ======
+    print("\n[STEP 2] Calling ActionPlanAgent (Summarizer)...")
+    
+    # Pass the COMPLETE GovDocAgent output directly
+    action_plan_response = await runtime.send_message(
+        Message(content=govdoc_response.content),  # Use full output as-is
         AgentId("ActionPlan", "default")
     )
     
     # Print the result
-    result = json.loads(response.content)
+    result = json.loads(action_plan_response.content)
     print("\n" + "=" * 60)
-    print("RESULT:")
+    print("FINAL RESULT:")
     print("=" * 60)
     print(json.dumps(result, indent=2, ensure_ascii=False))
     

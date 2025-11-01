@@ -25,7 +25,7 @@ from agents import Agent, Runner, trace
 from pydantic import BaseModel
 
 # Use unified Pydantic Message model
-from backend.app.models.message_model import Message
+from app.models.message_model import Message
 from app.services.location_service import get_location_info, LocationInfo, LocationResult
 
 from urllib.parse import urlparse
@@ -300,6 +300,28 @@ class GovDocAgent(RoutedAgent):
             "results": [l.model_dump(mode='json') for l in links],
             "docs": [d.model_dump(mode='json') for d in doc_refs],
         }
+        # 5) Call ActionPlanAgent
+        print(f"\n[GovDocAgent] ✅ Document collection complete ({len(doc_refs)} docs)")
+        print(f"[GovDocAgent] Calling ActionPlanAgent...")
+        
+        action_plan_request = {
+            "location": message.content.strip(),
+            "govdoc_data": payload
+        }
+        
+        action_plan_response = await self._runtime.send_message(
+            Message(content=json.dumps(action_plan_request)),
+            AgentId("ActionPlan", "default")
+        )
+        
+        action_plan_data = json.loads(action_plan_response.content)
+        
+        if "error" in action_plan_data:
+            return Message(content=json.dumps({
+                "status": "error",
+                "stage": "action_plan",
+                "error": action_plan_data["error"]
+            }))
         return Message(content=json.dumps(payload, ensure_ascii=False))
 
     async def _resolve_location(self, raw: str, ctx: MessageContext) -> LocationResult:
@@ -383,6 +405,7 @@ def fetch_docs(urls: list[str], place: str, source: str = "Prepared") -> list[Do
         meta = extract_text(meta)
         docs.append(DocRef(url=meta.url, title=meta.title, clean_path=meta.clean_path, place_key=place))
     return docs
+
          
 
 
