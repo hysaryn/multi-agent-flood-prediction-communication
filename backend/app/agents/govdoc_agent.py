@@ -294,35 +294,50 @@ class GovDocAgent(RoutedAgent):
                 # Could add to a "failed_urls" list for retry later
             except Exception as e:
                 print(f"[GovDoc] ❌ Download failed for {u}: {e}")
-        # 4) Build final payload
-        payload = {
-            "location": loc.location.model_dump(mode='json'),
-            "results": [l.model_dump(mode='json') for l in links],
-            "docs": [d.model_dump(mode='json') for d in doc_refs],
-        }
-        # 5) Call ActionPlanAgent
-        print(f"\n[GovDocAgent] ✅ Document collection complete ({len(doc_refs)} docs)")
-        print(f"[GovDocAgent] Calling ActionPlanAgent...")
-        
-        action_plan_request = {
-            "location": message.content.strip(),
-            "govdoc_data": payload
-        }
-        
-        action_plan_response = await self._runtime.send_message(
-            Message(content=json.dumps(action_plan_request)),
-            AgentId("ActionPlan", "default")
-        )
-        
-        action_plan_data = json.loads(action_plan_response.content)
-        
-        if "error" in action_plan_data:
-            return Message(content=json.dumps({
-                "status": "error",
-                "stage": "action_plan",
-                "error": action_plan_data["error"]
-            }))
-        return Message(content=json.dumps(payload, ensure_ascii=False))
+        # 4) Build payload with documents
+            govdoc_payload = {
+                "location": loc.location.model_dump(),
+                "results": [l.model_dump() for l in links],
+                "docs": [
+                    {
+                        "url": str(d.url),  # ← 转换 HttpUrl 为字符串
+                        "title": d.title,
+                        "clean_path": d.clean_path,
+                        "place_key": d.place_key
+                    }
+                    for d in doc_refs
+                ],
+            }
+            
+            # 5) Check if we have documents
+            if not doc_refs:
+                print(f"[GovDocAgent] ❌ No documents downloaded")
+                return Message(content=json.dumps({
+                    "status": "error",
+                    "error": "No documents found or downloaded",
+                    "location": message.content.strip()
+                }, ensure_ascii=False))
+            
+            # 6) Sequential flow: Pass govdoc_payload directly to ActionPlanAgent
+            print(f"\n[GovDocAgent] ✅ Document collection complete ({len(doc_refs)} docs)")
+            print(f"[GovDocAgent] → Calling ActionPlanAgent...")
+            
+            # Send govdoc_payload as-is (no wrapping!)
+            action_plan_response = await self._runtime.send_message(
+                Message(content=json.dumps(govdoc_payload, ensure_ascii=False)),
+                AgentId("ActionPlan", "default")
+            )
+            
+            # 7) ActionPlanAgent returns: {action_plan, govdoc_data, location}
+            # Pass it directly to Evaluator (sequential!)
+            print(f"[GovDocAgent] → Calling EvaluatorAgent...")
+            
+            final_response = await self._runtime.send_message(
+                action_plan_response,  # Pass through
+                AgentId("ActionPlanEvaluator", "default")
+            )
+            
+            return final_response
 
     async def _resolve_location(self, raw: str, ctx: MessageContext) -> LocationResult:
         """Resolve a location name or coordinates to structured location info."""
@@ -423,15 +438,45 @@ async def maybe_await(x):
 # Entry point for testing the agent directly
 # ---------------------------------------------------------
 async def main(): 
+    from app.agents.action_plan_agent import ActionPlanAgent
+    from app.agents.evaluator_agent import ActionPlanEvaluatorAgent
+    from app.agents.revision_agent import RevisionAgent
+    
     runtime = SingleThreadedAgentRuntime()
 
-    # Register the GovDoc agent into the runtime
+    print("Registering Sequential Pipeline agents...")
     await GovDocAgent.register(runtime, "GovDoc", lambda: GovDocAgent(runtime))
+    await ActionPlanAgent.register(runtime, "ActionPlan", lambda: ActionPlanAgent(runtime))
+    await RevisionAgent.register(runtime, "Revision", lambda: RevisionAgent(runtime))
+    await ActionPlanEvaluatorAgent.register(runtime, "ActionPlanEvaluator", lambda: ActionPlanEvaluatorAgent(runtime))
+    
     await maybe_await(runtime.start())
 
-    # Test: ask the GovDoc agent to search for flood-related docs
-    resp = await runtime.send_message(Message(content="Vancouver"), AgentId("GovDoc", "default"))
-    print(resp.content)
+    print("\n" + "=" * 80)
+    print("SEQUENTIAL PIPELINE TEST")
+    print("=" * 80)
+    print("Entry: GovDocAgent\n")
+
+    resp = await runtime.send_message(
+        Message(content="Vancouver, BC"),
+        AgentId("GovDoc", "default")
+    )
+    
+    result = json.loads(resp.content)
+    
+    print("\n" + "=" * 80)
+    print("RESULT:")
+    print("=" * 80)
+    print(f"Status: {result.get('status')}")
+    print(f"Iterations: {result.get('total_iterations', 1)}")
+    
+    if "action_plan" in result:
+        ap = result["action_plan"]
+        print(f"Actions: {len(ap.get('before_flood', []))} before, {len(ap.get('during_flood', []))} during, {len(ap.get('after_flood', []))} after")
+    
+    with open("sequential_output.json", "w") as f:
+        json.dump(result, f, indent=2, ensure_ascii=False)
+    print(f"\n💾 Saved to: sequential_output.json")
 
     await maybe_await(runtime.stop())
 
