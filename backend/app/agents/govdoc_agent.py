@@ -462,7 +462,7 @@ async def main():
     print("Entry: GovDocAgent\n")
 
     resp = await runtime.send_message(
-        Message(content="Vancouver, BC"),
+        Message(content="Toronto, Ontario"),
         AgentId("GovDoc", "default")
     )
     

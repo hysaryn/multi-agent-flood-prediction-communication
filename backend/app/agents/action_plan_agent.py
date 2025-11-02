@@ -115,7 +115,7 @@ class ActionPlanAgent(RoutedAgent):
             all_actions_with_phases = []
             
             for doc in doc_texts:
-                actions_with_phases = await self._extract_actions_from_doc(doc, ctx)
+                actions_with_phases = await self._extract_actions_from_doc(doc, location_query, ctx)
                 all_actions_with_phases.extend(actions_with_phases)
                 print(f"[ActionPlanAgent]   Extracted {len(actions_with_phases)} actions")
             
@@ -184,7 +184,7 @@ class ActionPlanAgent(RoutedAgent):
                 "govdoc_data": govdoc
             }))
     
-    async def _extract_actions_from_doc(self, doc: Dict, ctx: MessageContext) -> List[Tuple[Action, str]]:
+    async def _extract_actions_from_doc(self, doc: Dict, location: str, ctx: MessageContext) -> List[Tuple[Action, str]]:
         """
         Extract actions with phase information.
         
@@ -197,22 +197,32 @@ class ActionPlanAgent(RoutedAgent):
 Document: {doc['title']}
 Source: {doc['url']}
 
-Extract actionable items for ALL THREE flood phases:
+Extract LOCATION-SPECIFIC actionable items for flood preparation and response.
 
-BEFORE flood (preparation - aim for 50-60%):
-- Purchase insurance, prepare emergency kit, create plans
-- Elevate property, install barriers, assess risks
-- Sign up for alerts, document belongings
+🎯 PRIORITY: Extract actions that are:
+1. UNIQUE to {location}'s geography, climate, or infrastructure
+2. Based on LOCAL flood history or risk factors
+3. Specific to REGIONAL emergency management systems
+4. Referenced in THIS document (not generic advice)
 
-DURING flood (response - aim for 20-30%):
-- Evacuate when ordered, avoid floodwater
-- Turn off utilities, move to higher ground
-- Stay informed, follow official instructions
+PHASE GUIDELINES (distribute naturally based on document content):
+- BEFORE flood: Preparation, planning, prevention (typically 50-60%)
+- DURING flood: Immediate response, evacuation, safety (typically 20-30%)
+- AFTER flood: Recovery, repair, claims (typically 10-20%)
 
-AFTER flood (recovery - aim for 10-20%):
-- Document damage, file insurance claims
-- Cleanup safely, inspect property
-- Repair damage, restore utilities
+⚠️ AVOID GENERIC ACTIONS unless they have location-specific details:
+- Instead of "Purchase flood insurance" → Extract specifics about local programs
+- Instead of "Prepare emergency kit" → Extract region-specific supply recommendations
+- Instead of "Create evacuation plan" → Extract specific routes/shelters for {location}
+
+FOCUS ON:
+✅ Local flood warning systems (names, how to register)
+✅ Specific waterways, rivers, or coastal areas mentioned
+✅ Regional emergency services or agencies
+✅ Local building codes or elevation requirements
+✅ Historical flood events in this area
+✅ Community-specific resources or shelters
+✅ Climate patterns unique to this region
 
 For each action provide:
 {{
