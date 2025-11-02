@@ -65,6 +65,14 @@ def build_task_prompt(place: str, extra_keywords: list[str]) -> str:
 Goal: Return ONLY PDF links (URLs ending with .pdf) about flood action plans for: {place}
 Focus: {kw}
 
+REQUIRED: URLs must be from government/official sources:
+- Federal government domains: .gov, .gc.ca, .gov.uk, .gov.au, .gouv.fr
+- State/provincial domains: .gov.bc.ca, .gov.on.ca, .ontario.ca, .gov.ab.ca, etc.
+- Municipal/city domains: vancouver.ca, toronto.ca, ottawa.ca, etc.
+- Regional authorities and emergency management agencies
+
+Prefer domains containing: gov, government, city, municipality, emergency, regional
+
 HARD LIMITS (DO NOT VIOLATE):
 - TOTAL tool calls (SEARCH/OPEN/FIND/CLICK) <= 9
 - As soon as you SEE a PDF link (URL endswith .pdf), ADD it to items immediately.
@@ -134,7 +142,7 @@ async def mcp_browser_collect(place: str, extra_keywords: list[str] | None = Non
                 try:
                     data = json.loads(data)
                 except Exception:
-                    pass  # If parsing fails, keep as raw text
+                    pass   
 
             # Extract "items" list from possible JSON structures
             def _extract_items(payload):
@@ -151,9 +159,7 @@ async def mcp_browser_collect(place: str, extra_keywords: list[str] | None = Non
                 if isinstance(payload, list):
                     return payload
                 return []
-
             items = _extract_items(data)
-
             # Debug output
             print("[MCP] final_output type:", type(data).__name__)
             print("[MCP] items extracted:", len(items))
@@ -174,8 +180,6 @@ async def mcp_browser_collect(place: str, extra_keywords: list[str] | None = Non
     except Exception as e:
         print("[MCP] browser collect failed:", e)
         return {"items": []}
-
-
 # ---------------------------------------------------------
 # Pydantic Models for govdoc results
 # ---------------------------------------------------------
@@ -188,12 +192,10 @@ class GovDocLink(BaseModel):
     filetype: Optional[str] = None
     score: float = 0.0
 
-
 class GovDocResponse(BaseModel):
     """Full response containing location info and found links."""
     location: LocationInfo
     results: List[GovDocLink]
-
 
 # ---------------------------------------------------------
 # GovDocAgent - orchestrates gov doc retrieval and ranking
@@ -242,47 +244,52 @@ class GovDocAgent(RoutedAgent):
         if os.getenv("OPENAI_API_KEY") and links:
             links = await self._llm_rerank_and_summarize(links, loc.location, ctx)
 
+        print(f"\n[GovDoc] Processing {len(links)} links from MCP...")
+        
         pdf_urls = []
-        for l in links[:5]:  # Limit to top 5 to avoid too many requests
+        for i, l in enumerate(links[:5], 1):  # Only process top 5
             u = l.url.strip()
             
-            # Method 1: Check if MCP already identified it as PDF
+            print(f"\n[GovDoc] --- Link {i}/5 ---")
+            print(f"[GovDoc] Title: {l.title[:60]}")
+            print(f"[GovDoc] URL: {u}")
+            print(f"[GovDoc] Filetype (from MCP): '{l.filetype}'")
+            print(f"[GovDoc] Score: {l.score}")
+            
+            # Check 1: MCP says it's PDF
             if (l.filetype or "").lower() == "pdf":
                 pdf_urls.append(u)
-                print(f"[GovDoc] ✅ PDF (by filetype): {u}")
+                print(f"[GovDoc] ✅ Added (MCP identified as PDF)")
                 continue
             
-            # Method 2: URL ends with .pdf
+            # Check 2: URL ends with .pdf
             if u.lower().endswith(".pdf"):
                 pdf_urls.append(u)
-                print(f"[GovDoc] ✅ PDF (by extension): {u}")
+                print(f"[GovDoc] ✅ Added (URL ends with .pdf)")
                 continue
             
-            # Method 3: Do HEAD/GET to check content-type
-            print(f"[GovDoc] 🔍 Checking content-type: {u}")
+            # Check 3: HEAD request to verify content-type
+            print(f"[GovDoc] 🔍 Verifying content-type...")
             try:
                 if self._seems_pdf_by_head(u, timeout=10):
                     pdf_urls.append(u)
-                    print(f"[GovDoc] ✅ PDF (by content-type): {u}")
+                    print(f"[GovDoc] ✅ Added (verified as PDF)")
                 else:
-                    print(f"[GovDoc] ❌ Not a PDF: {u}")
+                    print(f"[GovDoc] ❌ Rejected (not a PDF)")
             except Exception as e:
-                print(f"[GovDoc] ⚠️  Could not check {u}: {e}")
-                # If we can't verify, but it's from results, try downloading anyway
-                if l.score > 2.0:  # High-scoring results
+                print(f"[GovDoc] ⚠️  Verification failed: {str(e)[:60]}")
+                # Be lenient for high-scoring results
+                if l.score > 2.0:
                     pdf_urls.append(u)
-                    print(f"[GovDoc] 🤷 Adding anyway (high score)")
+                    print(f"[GovDoc] 🤷 Added anyway (high score)")
+        
+        print(f"\n[GovDoc] Selected {len(pdf_urls)} PDFs for download")
+        
         # Deduplicate and limit to 5 PDFs
         seen = set()
         pdf_urls = [u for u in pdf_urls if not (u in seen or seen.add(u))][:5]
         doc_refs: list[DocRef] = []
         for u in pdf_urls:
-            # try:
-            #     meta = download(u, source="GovDocAgent", place_key=place)
-            #     meta = extract_text(meta)
-            #     doc_refs.append(DocRef(url=meta.url, title=meta.title or "", clean_path=meta.clean_path, place_key=place))
-            # except Exception as e:
-            #     print(f"[GovDocAgent] download/extract failed for {u}: {e}")
             try:
                 meta = download(u, source="GovDocAgent", place_key=place)
                 meta = extract_text(meta)
@@ -295,49 +302,48 @@ class GovDocAgent(RoutedAgent):
             except Exception as e:
                 print(f"[GovDoc] ❌ Download failed for {u}: {e}")
         # 4) Build payload with documents
-            govdoc_payload = {
-                "location": loc.location.model_dump(),
-                "results": [l.model_dump() for l in links],
-                "docs": [
-                    {
-                        "url": str(d.url),  # ← 转换 HttpUrl 为字符串
-                        "title": d.title,
-                        "clean_path": d.clean_path,
-                        "place_key": d.place_key
-                    }
-                    for d in doc_refs
-                ],
-            }
+        govdoc_payload = {
+            "location": loc.location.model_dump(),
+            "results": [l.model_dump() for l in links],
+            "docs": [
+                {
+                    "url": str(d.url),   
+                    "title": d.title,
+                    "clean_path": d.clean_path,
+                    "place_key": d.place_key
+                }
+                for d in doc_refs
+            ],
+        }
             
-            # 5) Check if we have documents
-            if not doc_refs:
-                print(f"[GovDocAgent] ❌ No documents downloaded")
-                return Message(content=json.dumps({
-                    "status": "error",
-                    "error": "No documents found or downloaded",
-                    "location": message.content.strip()
-                }, ensure_ascii=False))
+        # 5) Check if we have documents
+        if not doc_refs:
+            print(f"[GovDocAgent] ❌ No documents downloaded")
+            return Message(content=json.dumps({
+                "status": "error",
+                "error": "No documents found or downloaded",
+                "location": message.content.strip()
+            }, ensure_ascii=False))
             
-            # 6) Sequential flow: Pass govdoc_payload directly to ActionPlanAgent
-            print(f"\n[GovDocAgent] ✅ Document collection complete ({len(doc_refs)} docs)")
-            print(f"[GovDocAgent] → Calling ActionPlanAgent...")
+        # 6) Sequential flow: Pass govdoc_payload directly to ActionPlanAgent
+        print(f"\n[GovDocAgent] ✅ Document collection complete ({len(doc_refs)} docs)")
+        print(f"[GovDocAgent] → Calling ActionPlanAgent...")
             
             # Send govdoc_payload as-is (no wrapping!)
-            action_plan_response = await self._runtime.send_message(
-                Message(content=json.dumps(govdoc_payload, ensure_ascii=False)),
-                AgentId("ActionPlan", "default")
-            )
+        action_plan_response = await self._runtime.send_message(
+            Message(content=json.dumps(govdoc_payload, ensure_ascii=False)),
+            AgentId("ActionPlan", "default")
+        )
             
-            # 7) ActionPlanAgent returns: {action_plan, govdoc_data, location}
-            # Pass it directly to Evaluator (sequential!)
-            print(f"[GovDocAgent] → Calling EvaluatorAgent...")
-            
-            final_response = await self._runtime.send_message(
-                action_plan_response,  # Pass through
-                AgentId("ActionPlanEvaluator", "default")
-            )
-            
-            return final_response
+        # 7) ActionPlanAgent returns: {action_plan, govdoc_data, location}
+        # Pass it directly to Evaluator (sequential!)
+        print(f"[GovDocAgent] → Calling EvaluatorAgent...")
+        
+        final_response = await self._runtime.send_message(
+            action_plan_response,  # Pass through
+            AgentId("ActionPlanEvaluator", "default")
+        )
+        return final_response
 
     async def _resolve_location(self, raw: str, ctx: MessageContext) -> LocationResult:
         """Resolve a location name or coordinates to structured location info."""
@@ -350,10 +356,21 @@ class GovDocAgent(RoutedAgent):
             extra_kw = ["flood action plan", "preparedness", "checklist", "mitigation", "response", "before", "during", "after"]
             data = await mcp_browser_collect(place, extra_kw, timeout_s=120)
             items = (data or {}).get("items", [])
+            
+            print(f"[_run_search] MCP returned {len(items)} items")
+            
             seen = set()
-            for it in items:
+            for i, it in enumerate(items, 1):
                 u = (it.get("url") or "").strip()
-                if not u or u in seen or not self._is_gov_or_official(u):
+                
+                print(f"[_run_search] Item {i}: {it.get('title', 'No title')[:50]}")
+                print(f"[_run_search]   URL: {u}")
+                
+                if not u:
+                    print(f"[_run_search]   ❌ Skipped: empty URL")
+                    continue
+                if u in seen:
+                    print(f"[_run_search]   ❌ Skipped: duplicate")
                     continue
                 is_pdf = u.lower().endswith(".pdf")
                 browser_links.append(GovDocLink(
@@ -364,8 +381,13 @@ class GovDocAgent(RoutedAgent):
                     score=2.5 if is_pdf else 0.5,
                 ))
                 seen.add(u)
+                print(f"[_run_search]   ✅ Added (PDF: {is_pdf})")
+                
                 if len(browser_links) >= max_total:
                     break
+            
+            print(f"[_run_search] Final: {len(browser_links)} links")
+        
         except Exception as e:
             print("[MCP] fallback due to:", e)
         browser_links.sort(key=lambda x: (-(1 if x.filetype == "pdf" else 0), -x.score, x.title.lower()))
@@ -401,18 +423,6 @@ class GovDocAgent(RoutedAgent):
             pass
         return links
 
-    def _is_gov_or_official(self, url: str) -> bool:
-        """Check if a URL belongs to an official government domain."""
-        h = (urlparse(url).hostname or "").lower()
-        if any(h.endswith(s) for s in (".gov", ".gc.ca", ".gov.uk", ".gov.au", ".gouv.fr")):
-            return True
-        if h.endswith(".ca") and re.search(r"(city|municipal|regional|vancouver|toronto|ottawa)", h):
-            return True
-        if re.search(r"(cityof)[a-z\-]+", h):
-            return True
-        return False
-
-
 def fetch_docs(urls: list[str], place: str, source: str = "Prepared") -> list[DocRef]:
     docs: list[DocRef] = []
     for u in urls:
@@ -420,10 +430,6 @@ def fetch_docs(urls: list[str], place: str, source: str = "Prepared") -> list[Do
         meta = extract_text(meta)
         docs.append(DocRef(url=meta.url, title=meta.title, clean_path=meta.clean_path, place_key=place))
     return docs
-
-         
-
-
 # ---------------------------------------------------------
 # Helper for safe await calls
 # ---------------------------------------------------------
@@ -432,8 +438,6 @@ async def maybe_await(x):
     if inspect.isawaitable(x):
         return await x
     return x
-
-
 # ---------------------------------------------------------
 # Entry point for testing the agent directly
 # ---------------------------------------------------------
@@ -482,34 +486,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-# ---------------------------------------------------------
-# (Optional) Manual MCP test helper
-# ---------------------------------------------------------
-# import asyncio, json
-# from agents.mcp.server import MCPServerStdio   
-# from agents import Agent, Runner   
-# from dotenv import load_dotenv  
-# load_dotenv(override=True)
-#
-# MCP_PARAMS = {
-#     "command": "npx",
-#     "args": ["-y", "@playwright/mcp@latest"],   
-# }
-#
-# async def main():
-#     async with MCPServerStdio(params=MCP_PARAMS, name="browser") as browser_mcp:
-#         tools = await browser_mcp.list_tools()
-#         print("✅ list_tools:", [t.name for t in tools])
-#
-#         agent = Agent(
-#             name="smoke",
-#             instructions="You can browse with the 'browser' MCP server.",
-#             model="gpt-4.1-mini",
-#             mcp_servers=[browser_mcp],
-#         )
-#         res = await Runner.run(agent, "List available tools and return them as JSON.")
-#         print("✅ Runner result:", res.final_output)
-#
-# if __name__ == "__main__":
-#     asyncio.run(main())

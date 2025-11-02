@@ -15,10 +15,11 @@ from autogen_core import (
 from app.models.message_model import Message
 from app.models.action_plan_models import Action, ActionPlanResponse
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Tuple
 import json
 import asyncio
-from datetime import datetime
+import re
+from datetime import datetime, timezone
 
 
 class ActionPlanAgent(RoutedAgent):
@@ -27,7 +28,7 @@ class ActionPlanAgent(RoutedAgent):
     
     Sequential Architecture:
     - Receives: Complete GovDocAgent output
-    - Processes: Extracts and categorizes actions
+    - Processes: Extracts and categorizes actions with phase assignment
     - Outputs: Action plan + passes through govdoc_data for downstream agents
     """
     
@@ -46,7 +47,7 @@ class ActionPlanAgent(RoutedAgent):
     @message_handler
     async def on_action_plan_request(self, message: Message, ctx: MessageContext) -> Message:
         """
-        Generate action plan from government documents.
+        Generate action plan and pass through govdoc_data for sequential flow.
         
         Input (from GovDocAgent): {
             "location": {"query": "...", "display_name": "...", ...},
@@ -60,7 +61,7 @@ class ActionPlanAgent(RoutedAgent):
             "location": "..."
         }
         """
-        input_data = None  # Initialize to avoid UnboundLocalError
+        input_data = None
         
         try:
             # Parse input from GovDocAgent
@@ -111,23 +112,25 @@ class ActionPlanAgent(RoutedAgent):
             
             # Extract actions from all documents
             print(f"[ActionPlanAgent] Extracting actions from {len(doc_texts)} documents...")
-            all_actions = []
+            all_actions_with_phases = []
             
             for doc in doc_texts:
-                actions = await self._extract_actions_from_doc(doc, ctx)
-                all_actions.extend(actions)
-                print(f"[ActionPlanAgent]   Extracted {len(actions)} actions")
+                actions_with_phases = await self._extract_actions_from_doc(doc, ctx)
+                all_actions_with_phases.extend(actions_with_phases)
+                print(f"[ActionPlanAgent]   Extracted {len(actions_with_phases)} actions")
             
-            print(f"[ActionPlanAgent] Total actions extracted: {len(all_actions)}")
+            print(f"[ActionPlanAgent] Total actions extracted: {len(all_actions_with_phases)}")
             
-            # Categorize into before/during/after
-            before, during, after = self._categorize_by_phase(all_actions)
+            # Deduplicate
+            deduplicated = self._deduplicate_actions_with_phases(all_actions_with_phases)
+            print(f"[ActionPlanAgent] Deduplication: {len(all_actions_with_phases)} → {len(deduplicated)} actions")
+            
+            # Categorize using LLM phases
+            before, during, after = self._categorize_by_phase(deduplicated)
             
             print(f"[ActionPlanAgent] Categorized: Before={len(before)}, During={len(during)}, After={len(after)}")
             
             # Build action plan
-            from datetime import datetime, timezone
-            
             action_plan = ActionPlanResponse(
                 location=location_query,
                 display_name=display_name,
@@ -162,7 +165,6 @@ class ActionPlanAgent(RoutedAgent):
             import traceback
             traceback.print_exc()
             
-            # Safe error response
             location = "Unknown"
             govdoc = None
             
@@ -182,34 +184,58 @@ class ActionPlanAgent(RoutedAgent):
                 "govdoc_data": govdoc
             }))
     
-    async def _extract_actions_from_doc(self, doc: Dict, ctx: MessageContext) -> List[Action]:
+    async def _extract_actions_from_doc(self, doc: Dict, ctx: MessageContext) -> List[Tuple[Action, str]]:
         """
-        Extract actionable items from a single document using LLM.
+        Extract actions with phase information.
+        
+        Returns:
+            List of (Action, phase) tuples where phase is "before"|"during"|"after"
         """
+        
         prompt = f"""You are analyzing a government flood preparedness document.
 
 Document: {doc['title']}
 Source: {doc['url']}
 
-Extract ALL actionable items for residents. For each action, provide:
-1. Title (concise, actionable)
-2. Description (detailed steps with specific quantities, times, and locations)
-3. Priority (high/medium/low)
-4. Category (evacuation, property_protection, emergency_kit, communication, insurance, family_plan)
+Extract actionable items for ALL THREE flood phases:
 
-Focus on:
-- Concrete actions residents can take
-- Specific preparedness steps
-- Emergency response procedures
-- Recovery and cleanup tasks
+BEFORE flood (preparation - aim for 50-60%):
+- Purchase insurance, prepare emergency kit, create plans
+- Elevate property, install barriers, assess risks
+- Sign up for alerts, document belongings
 
-Return ONLY valid JSON array (no markdown, no explanations):
+DURING flood (response - aim for 20-30%):
+- Evacuate when ordered, avoid floodwater
+- Turn off utilities, move to higher ground
+- Stay informed, follow official instructions
+
+AFTER flood (recovery - aim for 10-20%):
+- Document damage, file insurance claims
+- Cleanup safely, inspect property
+- Repair damage, restore utilities
+
+For each action provide:
+{{
+  "title": "...",
+  "description": "... (specific details with quantities, times, locations)",
+  "priority": "high|medium|low",
+  "category": "evacuation|property_protection|emergency_kit|communication|insurance|family_plan",
+  "phase": "before|during|after"
+}}
+
+IMPORTANT: 
+- Distribute across all three phases
+- Avoid duplicates with other documents
+- Be specific in descriptions
+
+Return ONLY valid JSON array:
 [
   {{
-    "title": "...",
-    "description": "...",
-    "priority": "high|medium|low",
-    "category": "..."
+    "title": "Purchase flood insurance",
+    "description": "Contact insurance provider to obtain flood coverage...",
+    "priority": "high",
+    "category": "insurance",
+    "phase": "before"
   }}
 ]
 
@@ -222,10 +248,8 @@ JSON OUTPUT:"""
             message = TextMessage(content=prompt, source="user")
             response = await self._llm.on_messages([message], ctx.cancellation_token)
             
-            # Parse LLM response
             content = response.chat_message.content.strip()
             
-            # Remove markdown code blocks if present
             if content.startswith("```"):
                 content = content.split("```")[1]
                 if content.startswith("json"):
@@ -233,8 +257,8 @@ JSON OUTPUT:"""
             
             actions_data = json.loads(content)
             
-            # Convert to Action objects
-            actions = []
+            # Convert to (Action, phase) tuples
+            actions_with_phases = []
             for item in actions_data:
                 try:
                     action = Action(
@@ -244,49 +268,87 @@ JSON OUTPUT:"""
                         category=item["category"],
                         source_doc=doc["url"]
                     )
-                    actions.append(action)
+                    phase = item.get("phase", "before")
+                    actions_with_phases.append((action, phase))
                 except Exception as e:
                     print(f"[ActionPlanAgent]   ⚠️  Skipping invalid action: {e}")
                     continue
             
-            return actions
+            return actions_with_phases
         
         except json.JSONDecodeError as e:
             print(f"[ActionPlanAgent]   ❌ JSON parse error: {e}")
             print(f"[ActionPlanAgent]   LLM response preview: {content[:300]}")
             return []
         except Exception as e:
-            print(f"[ActionPlanAgent]   ❌ Error extracting actions: {e}")
+            print(f"[ActionPlanAgent]   ❌ Error: {e}")
             return []
     
-    def _categorize_by_phase(self, actions: List[Action]) -> tuple[List[Action], List[Action], List[Action]]:
+    def _deduplicate_actions_with_phases(self, actions_with_phases: List[Tuple[Action, str]]) -> List[Tuple[Action, str]]:
         """
-        Categorize actions into before/during/after flood phases using keyword matching.
+        Remove duplicate actions based on title similarity.
+        
+        Args:
+            actions_with_phases: List of (Action, phase) tuples
+        
+        Returns:
+            Deduplicated list of (Action, phase) tuples
+        """
+        seen_titles = set()
+        unique = []
+        
+        for action, phase in actions_with_phases:
+            # Normalize title
+            title_norm = action.title.lower().strip()
+            # Remove common prefixes for better matching
+            title_norm = re.sub(r'^(prepare|create|establish|develop|implement|conduct|review|build|install|assemble)\s+(an?\s+)?', '', title_norm)
+            
+            # Check similarity with existing titles
+            is_duplicate = False
+            for seen in seen_titles:
+                # Word overlap check
+                words_action = set(title_norm.split())
+                words_seen = set(seen.split())
+                
+                if len(words_action) > 0 and len(words_seen) > 0:
+                    overlap = len(words_action & words_seen) / max(len(words_action), len(words_seen))
+                    if overlap > 0.7:  # 70% word overlap = duplicate
+                        is_duplicate = True
+                        print(f"[ActionPlanAgent]   🗑️  Duplicate: '{action.title}'")
+                        break
+            
+            if not is_duplicate:
+                unique.append((action, phase))
+                seen_titles.add(title_norm)
+        
+        return unique
+    
+    def _categorize_by_phase(self, actions_with_phases: List[Tuple[Action, str]]) -> Tuple[List[Action], List[Action], List[Action]]:
+        """
+        Categorize actions using LLM phases with keyword validation.
         """
         before = []
         during = []
         after = []
         
-        # Keywords for classification
-        before_keywords = ["prepare", "plan", "kit", "insurance", "document", "elevate", "install", "purchase", "review", "create", "gather"]
-        during_keywords = ["evacuate", "avoid", "stay away", "listen", "monitor", "turn off", "move to", "shut off", "leave", "go to"]
-        after_keywords = ["cleanup", "repair", "document damage", "claim", "return", "inspect", "disinfect", "restore", "file claim"]
+        # Keywords that override LLM (only check title for precision)
+        during_title_keywords = ["evacuate", "leave home", "move to higher", "avoid water", "turn off", "shut off"]
+        after_title_keywords = ["document damage", "file claim", "cleanup", "clean up", "repair", "restore", "inspect"]
         
-        for action in actions:
-            text = (action.title + " " + action.description).lower()
+        for action, llm_phase in actions_with_phases:
+            title_lower = action.title.lower()
             
-            # Count keyword matches for each phase
-            before_score = sum(1 for kw in before_keywords if kw in text)
-            during_score = sum(1 for kw in during_keywords if kw in text)
-            after_score = sum(1 for kw in after_keywords if kw in text)
-            
-            # Assign to phase with highest score
-            if during_score > before_score and during_score > after_score:
+            # Strong override if action is clearly during/after based on title
+            if any(kw in title_lower for kw in during_title_keywords):
                 during.append(action)
-            elif after_score > before_score and after_score > during_score:
+            elif any(kw in title_lower for kw in after_title_keywords):
+                after.append(action)
+            # Trust LLM otherwise
+            elif llm_phase == "during":
+                during.append(action)
+            elif llm_phase == "after":
                 after.append(action)
             else:
-                # Default to before (preparation is most common)
                 before.append(action)
         
         return before, during, after
@@ -349,11 +411,20 @@ async def main():
     status = result.get("status", "unknown")
     print(f"\n📊 Status: {status.upper()}")
     
-    # Revision history
-    if "revision_history" in result:
-        print(f"\n🔄 Revision History: {len(result['revision_history'])} iterations")
-        for rev in result["revision_history"]:
-            print(f"  Iteration {rev['iteration']}: {rev['recommendation']} (score: {rev['overall_score']:.3f})")
+    # Revision info
+    if "comparison" in result:
+        comp = result["comparison"]
+        print(f"\n⚖️  Version Comparison:")
+        print(f"  Selected: {comp.get('better_version', 'N/A').upper()}")
+        print(f"  Score Delta: {comp.get('score_delta', 0):+.3f}")
+        if comp.get('improvements'):
+            print(f"  Improvements:")
+            for imp in comp['improvements']:
+                print(f"    ✅ {imp}")
+        if comp.get('regressions'):
+            print(f"  Regressions:")
+            for reg in comp['regressions']:
+                print(f"    ⚠️  {reg}")
     
     # Final action plan
     if "action_plan" in result:
@@ -366,9 +437,11 @@ async def main():
         print(f"\n📋 Final Action Plan:")
         print(f"  Location: {ap.get('location')}")
         print(f"  Total Actions: {total}")
-        print(f"    Before: {before} ({before/total*100:.0f}%)")
-        print(f"    During: {during} ({during/total*100:.0f}%)")
-        print(f"    After: {after} ({after/total*100:.0f}%)")
+        if total > 0:
+            print(f"    Before: {before} ({before/total*100:.0f}%)")
+            print(f"    During: {during} ({during/total*100:.0f}%)")
+            print(f"    After: {after} ({after/total*100:.0f}%)")
+        print(f"  Sources: {len(ap.get('sources', []))} documents")
     
     # Final evaluation
     if "evaluation" in result:
@@ -376,13 +449,25 @@ async def main():
         print(f"\n✅ Final Evaluation:")
         print(f"  Score: {ev.get('overall_score', 0):.3f}")
         print(f"  Recommendation: {ev.get('recommendation')}")
+        print(f"  Dimension Scores:")
         
         for dim in ['accuracy', 'clarity', 'completeness', 'relevance', 'coherence']:
             if dim in ev:
                 score = ev[dim].get('score', 0)
                 threshold = ev.get('thresholds', {}).get(dim, 0.7)
                 icon = "✅" if score >= threshold else "❌"
-                print(f"    {icon} {dim.capitalize()}: {score:.2f}")
+                print(f"    {icon} {dim.capitalize()}: {score:.2f} (threshold: {threshold:.2f})")
+        
+        # Show issues if any
+        coverage = ev.get('coverage_data', {})
+        if coverage.get('missing_essential'):
+            print(f"\n  ⚠️  Missing Categories: {', '.join(coverage['missing_essential'])}")
+        
+        coherence = ev.get('coherence', {})
+        if coherence.get('duplicate_actions'):
+            print(f"  ⚠️  Duplicates Found: {len(coherence['duplicate_actions'])}")
+        if coherence.get('phase_errors'):
+            print(f"  ⚠️  Phase Errors: {len(coherence['phase_errors'])}")
     
     # Save output
     with open("sequential_output.json", "w", encoding="utf-8") as f:

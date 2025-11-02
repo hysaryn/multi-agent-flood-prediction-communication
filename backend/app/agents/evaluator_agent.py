@@ -105,6 +105,16 @@ class ActionPlanEvaluatorAgent(RoutedAgent):
                 print(f"\n[EvaluatorAgent] 🔄 STEP 2: Performing single revision...")
                 
                 # Call RevisionAgent
+                return await self._runtime.send_message(
+                Message(content=json.dumps({
+                    "original_plan": input_data["action_plan"],
+                    "evaluation": eval_result,
+                    "govdoc_data": input_data["govdoc_data"],
+                    "location": input_data["location"]
+                })),
+                AgentId("Revision", "default")
+            )
+
                 revision_request = {
                     "action_plan": action_plan_json,
                     "evaluation": eval_result_v1,
