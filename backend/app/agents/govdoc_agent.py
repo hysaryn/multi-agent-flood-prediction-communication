@@ -2,7 +2,7 @@
 # Environment Setup
 # ---------------------------------------------------------
 # cd "/Users/carrietong/Desktop/CS7980 Capstone/multi-agent-flood-prediction-communication/backend"
-# source venv/bin/activate
+# source .venv/bin/activate
 # python -m app.agents.govdoc_agent
 # ---------------------------------------------------------
 from dotenv import load_dotenv 
@@ -20,12 +20,12 @@ from autogen_core import (
     RoutedAgent,
     message_handler,
 )
-from agents.mcp.server import MCPServerStdio
+from agents.mcp import MCPServerStdio
 from agents import Agent, Runner, trace
 from pydantic import BaseModel
 
 # Use unified Pydantic Message model
-from backend.app.models.message_model import Message
+from app.models.message_model import Message
 from app.services.location_service import get_location_info, LocationInfo, LocationResult
 
 from urllib.parse import urlparse
@@ -227,13 +227,33 @@ class GovDocAgent(RoutedAgent):
     @message_handler
     async def on_govdoc_request(self, message: Message, ctx: MessageContext) -> Message:
         """Handle requests to search for government flood preparedness PDFs."""
+        content = message.content.strip()
+        
+        # CRITICAL: Reject JSON messages - GovDocAgent only accepts location strings
+        if content.startswith('{') or content.startswith('['):
+            error_msg = f"CRITICAL ERROR: GovDocAgent received JSON instead of location! First 200 chars: {content[:200]}"
+            print(f"[GovDocAgent] ❌ {error_msg}")
+            # Try to parse to see what it is
+            try:
+                payload = json.loads(content)
+                if isinstance(payload, dict) and "mode" in payload:
+                    mode = payload.get('mode', 'unknown')
+                    error_msg += f"\n[GovDocAgent] This appears to be a {mode} request for ActionPlanAgent!"
+                    print(f"[GovDocAgent] {error_msg}")
+            except:
+                pass
+            return Message(content=json.dumps({
+                "error": "GovDocAgent only accepts location strings, not JSON requests",
+                "received": content[:100]
+            }))
+        
         # 1) Get structured location information
-        loc = await self._resolve_location(message.content, ctx)
+        loc = await self._resolve_location(content, ctx)
         raw_place = (loc.location.query or loc.location.display_name or "Canada").strip()
         parts = [p.strip() for p in raw_place.split(",") if p.strip()]
         place = parts[0] if parts else "Canada"
         place = slugify_place(place) 
-        print(f"[GovDocAgent] place = {place}")
+        print(f"[GovDocAgent] ✅ place = {place}")
 
         # 2) Search and filter results
         links = await self._run_search(place, max_total=5)
