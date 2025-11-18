@@ -305,13 +305,33 @@ SUMMARY:
 PLAN:
 {action_plan.model_dump_json(indent=2, exclude_none=True)}
 
-Evaluate on 5 dimensions (0.0-1.0):
-
-1. ACCURACY: Factually correct for {location}, no hallucinations
-2. CLARITY: Plain language, specific details, actionable
-3. COMPLETENESS: Category coverage, phase distribution
-4. RELEVANCE: Location-specific, risk-aligned
-5. COHERENCE: Correct phases, no duplicates, no contradictions
+"EVALUATION CRITERIA (each scored 0.0-1.0, equal weight):\n\n"
+    "1. ACCURACY (1.0): All claims must be supported by evidence (location, risk level, geo/time alignment).\n"
+    "   - Penalize any mismatch or invented numbers\n"
+    "   - Verify location-specific facts match the provided location\n"
+    "   - Verify risk level aligns with stated risk tier\n"
+    "   - Verify geographic and temporal information is consistent\n"
+    "   - HARD-GATE: Score < 0.6 = automatic REVISE\n\n"
+    "2. CLARITY (1.0): Plain language, short sentences, imperative actions (\"Do XX\").\n"
+    "   - Penalize jargon (e.g., \"20-yr return periods\" without explanation)\n"
+    "   - Use direct, actionable language\n"
+    "   - Keep sentences short and clear\n"
+    "   - Use imperative mood for actions (\"Do X\", \"Go to Y\", \"Call Z\")\n\n"
+    "3. COMPLETENESS (1.0): Coverage checklist - contains who/what/where/when/how.\n"
+    "   - Action plans should cover 6-10 core categories (evacuation, kit, insurance, etc.)\n"
+    "   - Ensure who/what/where/when/how are present\n"
+    "   - Include time windows and contact information where applicable\n"
+    "   - Verify essential action categories are covered\n\n"
+    "4. RELEVANCE (1.0): Content tailored to user's location/risk level/phase/audience.\n"
+    "   - No off-region steps\n"
+    "   - Aligns with the stated risk tier\n"
+    "   - Location-specific information matches the provided location\n"
+    "   - Appropriate for the target audience\n\n"
+    "5. COHERENCE (1.0): Logical order (Before → During → After), no contradictions, no duplicates, consistent terms.\n"
+    "   - Verify logical flow: Before → During → After\n"
+    "   - Check for contradictions between sections\n"
+    "   - Identify duplicate or redundant information\n"
+    "   - Ensure consistent terminology across sections\n\n"
 
 JSON output:
 {{
@@ -364,7 +384,7 @@ JSON output:
         weights = {
             'accuracy': 0.25,
             'clarity': 0.15,
-            'completeness': 0.25,
+            'completeness': 0.20,
             'relevance': 0.20,
             'coherence': 0.20
         }

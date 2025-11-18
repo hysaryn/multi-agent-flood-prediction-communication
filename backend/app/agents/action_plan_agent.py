@@ -193,6 +193,18 @@ class ActionPlanAgent(RoutedAgent):
         """
         
         prompt = f"""You are analyzing a government flood preparedness document.
+        
+⚠️ CRITICAL RULES TO PREVENT HALLUCINATION:
+1. ONLY extract information EXPLICITLY stated in the document text below
+2. If a detail is not in the document, use "Not specified" instead of inventing
+3. Do NOT add information from your general knowledge
+4. Do NOT make assumptions about {location} unless stated in the document
+5. If unsure, mark with [UNCERTAIN] prefix
+
+VALIDATION CHECKLIST - Before including any action, verify:
+☑️ Is this EXACT action mentioned in the document text?
+☑️ Are the specific details (numbers, names, locations) FROM the document?
+☑️ Can I quote the source sentence that supports this?
 
 Document: {doc['title']}
 Source: {doc['url']}
