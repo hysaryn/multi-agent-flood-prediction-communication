@@ -329,21 +329,10 @@ class GovDocAgent(RoutedAgent):
         print(f"\n[GovDocAgent] ✅ Document collection complete ({len(doc_refs)} docs)")
         print(f"[GovDocAgent] → Calling ActionPlanAgent...")
             
-            # Send govdoc_payload as-is (no wrapping!)
-        action_plan_response = await self._runtime.send_message(
-            Message(content=json.dumps(govdoc_payload, ensure_ascii=False)),
-            AgentId("ActionPlan", "default")
-        )
-            
-        # 7) ActionPlanAgent returns: {action_plan, govdoc_data, location}
-        # Pass it directly to Evaluator (sequential!)
-        print(f"[GovDocAgent] → Calling EvaluatorAgent...")
-        
-        final_response = await self._runtime.send_message(
-            action_plan_response,  # Pass through
-            AgentId("ActionPlanEvaluator", "default")
-        )
-        return final_response
+        return await self._runtime.send_message( 
+        Message(content=json.dumps(govdoc_payload, ensure_ascii=False)),
+        AgentId("ActionPlan", "default")
+    )
 
     async def _resolve_location(self, raw: str, ctx: MessageContext) -> LocationResult:
         """Resolve a location name or coordinates to structured location info."""

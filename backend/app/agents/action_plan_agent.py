@@ -150,7 +150,11 @@ class ActionPlanAgent(RoutedAgent):
                 "location": location_query
             }
             
-            return Message(content=json.dumps(output, ensure_ascii=False))
+            print(f"[ActionPlanAgent] → Calling EvaluatorAgent...")
+            return await self._runtime.send_message(
+                Message(content=json.dumps(output, ensure_ascii=False)),
+                AgentId("ActionPlanEvaluator", "default")
+            )
         
         except json.JSONDecodeError as e:
             print(f"[ActionPlanAgent] ❌ Invalid JSON input: {e}")
@@ -193,7 +197,7 @@ class ActionPlanAgent(RoutedAgent):
         """
         
         prompt = f"""You are analyzing a government flood preparedness document.
-        
+
 ⚠️ CRITICAL RULES TO PREVENT HALLUCINATION:
 1. ONLY extract information EXPLICITLY stated in the document text below
 2. If a detail is not in the document, use "Not specified" instead of inventing
