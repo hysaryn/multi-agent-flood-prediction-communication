@@ -14,12 +14,21 @@ from autogen_core import (
 
 from app.models.message_model import Message
 from app.models.action_plan_models import Action, ActionPlanResponse
+from app.services.cost_tracker import get_cost_tracker
 from pathlib import Path
 from typing import List, Dict, Tuple
 import json
 import asyncio
 import re
 from datetime import datetime, timezone
+
+# Try to import tiktoken for accurate token-based truncation
+try:
+    import tiktoken
+    TIKTOKEN_AVAILABLE = True
+except ImportError:
+    TIKTOKEN_AVAILABLE = False
+    print("[ActionPlanAgent] ⚠️  tiktoken not available, using character-based truncation")
 
 
 class ActionPlanAgent(RoutedAgent):
@@ -36,6 +45,16 @@ class ActionPlanAgent(RoutedAgent):
         super().__init__("ActionPlan")
         self._runtime = runtime
         
+        # Initialize tiktoken for accurate token-based truncation
+        if TIKTOKEN_AVAILABLE:
+            try:
+                self._encoding = tiktoken.encoding_for_model("gpt-4o-mini")
+            except Exception as e:
+                print(f"[ActionPlanAgent] ⚠️  Failed to initialize tiktoken: {e}")
+                self._encoding = None
+        else:
+            self._encoding = None
+        
         # LLM for extracting and categorizing actions
         self._llm = AssistantAgent(
             "ActionPlanLLM",
@@ -43,6 +62,34 @@ class ActionPlanAgent(RoutedAgent):
                 model="gpt-4o-mini",
             ),
         )
+    
+    def _truncate_text_by_tokens(self, text: str, max_tokens: int = 15000) -> str:
+        """
+        Truncate text by token count (more accurate than character count).
+        
+        Args:
+            text: Text to truncate
+            max_tokens: Maximum number of tokens (default: 10000)
+        
+        Returns:
+            Truncated text
+        """
+        if self._encoding is None:
+            # Fallback: approximate token truncation using character count
+            # Rough estimate: 1 token ≈ 4 characters for English
+            max_chars = max_tokens * 4
+            if len(text) <= max_chars:
+                return text
+            return text[:max_chars]
+        
+        # Accurate token-based truncation
+        tokens = self._encoding.encode(text)
+        if len(tokens) <= max_tokens:
+            return text
+        
+        # Truncate to max_tokens and decode back to text
+        truncated_tokens = tokens[:max_tokens]
+        return self._encoding.decode(truncated_tokens)
     
     @message_handler
     async def on_action_plan_request(self, message: Message, ctx: MessageContext) -> Message:
@@ -66,6 +113,7 @@ class ActionPlanAgent(RoutedAgent):
         try:
             # Parse input from GovDocAgent
             input_data = json.loads(message.content)
+            pipeline_start_time = input_data.get("_pipeline_start_time")
             
             location_info = input_data.get("location", {})
             location_query = location_info.get("query") or location_info.get("display_name", "Unknown")
@@ -95,12 +143,26 @@ class ActionPlanAgent(RoutedAgent):
                     continue
                 
                 text = Path(clean_path).read_text(encoding='utf-8', errors='ignore')
+                
+                # Truncate by tokens (more accurate than characters)
+                truncated_text = self._truncate_text_by_tokens(text, max_tokens=15000)
+                
+                # Count tokens if available for logging
+                if self._encoding:
+                    original_tokens = len(self._encoding.encode(text))
+                    truncated_tokens = len(self._encoding.encode(truncated_text))
+                    if original_tokens > truncated_tokens:
+                        print(f"[ActionPlanAgent]   ✅ Loaded: {doc.get('title', 'Untitled')[:50]}... ({len(text)} chars, {original_tokens} tokens → {truncated_tokens} tokens)")
+                    else:
+                        print(f"[ActionPlanAgent]   ✅ Loaded: {doc.get('title', 'Untitled')[:50]}... ({len(text)} chars, {original_tokens} tokens)")
+                else:
+                    print(f"[ActionPlanAgent]   ✅ Loaded: {doc.get('title', 'Untitled')[:50]}... ({len(text)} chars)")
+                
                 doc_texts.append({
                     "url": url,
-                    "text": text[:15000],
+                    "text": truncated_text,
                     "title": doc.get("title", "Untitled")
                 })
-                print(f"[ActionPlanAgent]   ✅ Loaded: {doc.get('title', 'Untitled')[:50]}... ({len(text)} chars)")
             
             if not doc_texts:
                 return Message(content=json.dumps({
@@ -138,16 +200,18 @@ class ActionPlanAgent(RoutedAgent):
                 during_flood=during,
                 after_flood=after,
                 sources=[doc["url"] for doc in doc_texts],
-                generated_at=datetime.now(timezone.utc).isoformat()
+                generated_at=datetime.now(timezone.utc).isoformat(),
+                pipeline_start_time=pipeline_start_time
             )
-            
+
             print(f"[ActionPlanAgent] ✅ Plan complete: {action_plan.total_actions()} total actions")
             
             # Output for sequential flow
             output = {
                 "action_plan": action_plan.model_dump(mode='python'),
                 "govdoc_data": input_data,
-                "location": location_query
+                "location": location_query,
+                "_pipeline_start_time": pipeline_start_time 
             }
             
             print(f"[ActionPlanAgent] → Calling EvaluatorAgent...")
@@ -190,7 +254,7 @@ class ActionPlanAgent(RoutedAgent):
     
     async def _extract_actions_from_doc(self, doc: Dict, location: str, ctx: MessageContext) -> List[Tuple[Action, str]]:
         """
-        Extract actions with phase information.
+        Extract ONLY **resident-facing flood preparedness and response actions**.
         
         Returns:
             List of (Action, phase) tuples where phase is "before"|"during"|"after"
@@ -198,56 +262,35 @@ class ActionPlanAgent(RoutedAgent):
         
         prompt = f"""You are analyzing a government flood preparedness document.
 
-⚠️ CRITICAL RULES TO PREVENT HALLUCINATION:
-1. ONLY extract information EXPLICITLY stated in the document text below
-2. If a detail is not in the document, use "Not specified" instead of inventing
-3. Do NOT add information from your general knowledge
-4. Do NOT make assumptions about {location} unless stated in the document
-5. If unsure, mark with [UNCERTAIN] prefix
+TARGET AUDIENCE: Individual homeowners and renters in {location}
 
-VALIDATION CHECKLIST - Before including any action, verify:
-☑️ Is this EXACT action mentioned in the document text?
-☑️ Are the specific details (numbers, names, locations) FROM the document?
-☑️ Can I quote the source sentence that supports this?
 
 Document: {doc['title']}
 Source: {doc['url']}
 
-Extract LOCATION-SPECIFIC actionable items for flood preparation and response.
+TRACTION RULES:
+1. Extract actions from the document text (no hallucination)
+2. INCLUDE both location-specific AND essential universal actions
+3. EXCLUDE: government infrastructure projects, policy frameworks, municipal planning
 
-🎯 PRIORITY: Extract actions that are:
-1. UNIQUE to {location}'s geography, climate, or infrastructure
-2. Based on LOCAL flood history or risk factors
-3. Specific to REGIONAL emergency management systems
-4. Referenced in THIS document (not generic advice)
+TARGET: 20-30 total actions distributed as:
+- BEFORE: 12-18 actions (50-60%) - preparation, planning, protection
+- DURING: 4-8 actions (20-30%) - evacuation, immediate safety
+- AFTER: 3-6 actions (10-20%) - cleanup, documentation, recovery
 
-PHASE GUIDELINES (distribute naturally based on document content):
-- BEFORE flood: Preparation, planning, prevention (typically 50-60%)
-- DURING flood: Immediate response, evacuation, safety (typically 20-30%)
-- AFTER flood: Recovery, repair, claims (typically 10-20%)
+MUST INCLUDE if mentioned (even if generic):
+✅ Flood insurance purchase/claims
+✅ Emergency kit preparation
+✅ Family communication plan
+✅ Evacuation procedures
+✅ Utility shutoff (gas/power/water)
+✅ Damage documentation
 
-⚠️ AVOID GENERIC ACTIONS unless they have location-specific details:
-- Instead of "Purchase flood insurance" → Extract specifics about local programs
-- Instead of "Prepare emergency kit" → Extract region-specific supply recommendations
-- Instead of "Create evacuation plan" → Extract specific routes/shelters for {location}
-
-FOCUS ON:
-✅ Local flood warning systems (names, how to register)
-✅ Specific waterways, rivers, or coastal areas mentioned
-✅ Regional emergency services or agencies
-✅ Local building codes or elevation requirements
-✅ Historical flood events in this area
-✅ Community-specific resources or shelters
-✅ Climate patterns unique to this region
-
-For each action provide:
-{{
-  "title": "...",
-  "description": "... (specific details with quantities, times, locations)",
-  "priority": "high|medium|low",
-  "category": "evacuation|property_protection|emergency_kit|communication|insurance|family_plan",
-  "phase": "before|during|after"
-}}
+PRIORITIZE location-specific details:
+- Named waterways, neighborhoods, or local agencies
+- Specific programs or subsidies for {location}
+- Regional flood history or unique risks
+- Local emergency contacts or shelters
 
 IMPORTANT: 
 - Distribute across all three phases
@@ -268,13 +311,46 @@ Return ONLY valid JSON array:
 Document text:
 {doc['text'][:10000]}
 
-JSON OUTPUT:"""
-        
+JSON:"""
+
         try:
             message = TextMessage(content=prompt, source="user")
             response = await self._llm.on_messages([message], ctx.cancellation_token)
             
+            # Try to track cost - autogen may not expose usage directly
+            # Estimate based on prompt and response length if usage not available
+            prompt_tokens_est = len(prompt.split()) * 1.3  # Rough estimate: 1.3 tokens per word
             content = response.chat_message.content.strip()
+            completion_tokens_est = len(content.split()) * 1.3
+            
+            # Try to get actual usage if available
+            usage = None
+            if hasattr(response, 'usage'):
+                usage = response.usage
+            elif hasattr(response, 'chat_message') and hasattr(response.chat_message, 'usage'):
+                usage = response.chat_message.usage
+            
+            if usage:
+                get_cost_tracker().record_usage(
+                    agent_name="ActionPlanAgent",
+                    operation="extract_actions",
+                    model="gpt-4o-mini",
+                    usage={
+                        "prompt_tokens": getattr(usage, 'prompt_tokens', int(prompt_tokens_est)),
+                        "completion_tokens": getattr(usage, 'completion_tokens', int(completion_tokens_est)),
+                        "total_tokens": getattr(usage, 'total_tokens', int(prompt_tokens_est + completion_tokens_est))
+                    }
+                )
+            else:
+                # Fallback: estimate based on content length
+                get_cost_tracker().record_usage(
+                    agent_name="ActionPlanAgent",
+                    operation="extract_actions",
+                    model="gpt-4o-mini",
+                    prompt_tokens=int(prompt_tokens_est),
+                    completion_tokens=int(completion_tokens_est),
+                    total_tokens=int(prompt_tokens_est + completion_tokens_est)
+                )
             
             if content.startswith("```"):
                 content = content.split("```")[1]

@@ -11,6 +11,7 @@ from autogen_core import (
 
 from app.models.message_model import Message
 from app.models.action_plan_models import Action, ActionPlanResponse
+from app.services.cost_tracker import get_cost_tracker
 from openai import OpenAI
 from pathlib import Path
 from typing import List, Dict
@@ -48,6 +49,8 @@ class RevisionAgent(RoutedAgent):
             govdoc_data = input_data.get("govdoc_data")
             location = input_data.get("location")
             
+
+            pipeline_start_time = input_data.get("_pipeline_start_time")
             print(f"\n[RevisionAgent] ═══════════════════════════════════════")
             print(f"[RevisionAgent] Starting revision for {location}")
             print(f"[RevisionAgent] ═══════════════════════════════════════")
@@ -142,6 +145,9 @@ class RevisionAgent(RoutedAgent):
                 final_plan = original_plan_json
                 final_evaluation = original_evaluation
                 selected_version = "original"
+
+            if isinstance(final_plan, dict):
+                final_plan["pipeline_start_time"] = pipeline_start_time
             
             status = "approved" if final_evaluation["recommendation"] == "APPROVE" else "needs_improvement"
             
@@ -218,9 +224,22 @@ JSON:"""
                     {"role": "system", "content": "Extract specific flood actions. Return JSON only."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3,
+                temperature=0.0,  # Set to 0.0 for maximum consistency
                 max_tokens=1500
             )
+            
+            # Track cost
+            if hasattr(response, 'usage') and response.usage:
+                get_cost_tracker().record_usage(
+                    agent_name="RevisionAgent",
+                    operation="add_missing_categories",
+                    model=self._model,
+                    usage={
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                        "total_tokens": response.usage.total_tokens
+                    }
+                )
             
             content = response.choices[0].message.content.strip()
             if content.startswith("```"):
@@ -334,9 +353,22 @@ Return ONLY enhanced description (no JSON, no title):"""
             response = self._client.chat.completions.create(
                 model=self._model,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
+                temperature=0.0,  # Set to 0.0 for maximum consistency
                 max_tokens=200
             )
+            
+            # Track cost
+            if hasattr(response, 'usage') and response.usage:
+                get_cost_tracker().record_usage(
+                    agent_name="RevisionAgent",
+                    operation="enhance_clarity",
+                    model=self._model,
+                    usage={
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                        "total_tokens": response.usage.total_tokens
+                    }
+                )
             
             desc = response.choices[0].message.content.strip().strip('"').strip("'")
             
@@ -432,15 +464,40 @@ JSON output:
                     {"role": "system", "content": "You evaluate emergency plans objectively."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2,
+                temperature=0.0,  # Set to 0.0 for maximum consistency
                 max_tokens=2000
             )
+            
+            # Track cost and check for truncation
+            if hasattr(response, 'usage') and response.usage:
+                completion_tokens = response.usage.completion_tokens
+                max_tokens_set = 2000
+                
+                # Warn if approaching max_tokens limit
+                if completion_tokens >= max_tokens_set * 0.9:
+                    print(f"[RevisionAgent] ⚠️  High token usage: {completion_tokens}/{max_tokens_set} tokens used")
+                
+                get_cost_tracker().record_usage(
+                    agent_name="RevisionAgent",
+                    operation="re_evaluate_plan",
+                    model=self._model,
+                    usage={
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": response.usage.total_tokens
+                    }
+                )
             
             content = response.choices[0].message.content.strip()
             if content.startswith("```"):
                 content = "\n".join(content.split("\n")[1:-1]).strip()
             
-            return json.loads(content)
+            # Try to parse JSON, catch truncation errors
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError as e:
+                print(f"[RevisionAgent] ❌ JSON parse error (possible truncation): {e}")
+                raise
         except Exception as e:
             print(f"[RevisionAgent] ❌ LLM error: {e}")
             return {

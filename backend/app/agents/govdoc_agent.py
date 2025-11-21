@@ -27,6 +27,7 @@ from pydantic import BaseModel
 # Use unified Pydantic Message model
 from app.models.message_model import Message
 from app.services.location_service import get_location_info, LocationInfo, LocationResult
+from app.services.cost_tracker import get_cost_tracker
 
 from urllib.parse import urlparse
 from typing import List, Optional
@@ -35,6 +36,7 @@ import os, re, json, asyncio
 from ..tools.downloader import download
 from ..tools.text_extractor import extract_text
 from ..models.govdoc_models import DocRef
+from datetime import datetime, timezone
 
 # ---------------------------------------------------------
 # Storage cleanup: keep last 2 accessed files per place_key
@@ -229,6 +231,14 @@ class GovDocAgent(RoutedAgent):
     @message_handler
     async def on_govdoc_request(self, message: Message, ctx: MessageContext) -> Message:
         """Handle requests to search for government flood preparedness PDFs."""
+        # Reset cost tracker at the start of each pipeline run
+        from app.services.cost_tracker import reset_cost_tracker
+        reset_cost_tracker()
+        
+        pipeline_start = datetime.now(timezone.utc)
+        print(f"\n[{pipeline_start.isoformat()}] [Pipeline] Started")
+        print(f"[GovDocAgent] Processing location: {message.content.strip()}")
+
         # 1) Get structured location information
         loc = await self._resolve_location(message.content, ctx)
         raw_place = (loc.location.query or loc.location.display_name or "Canada").strip()
@@ -314,6 +324,7 @@ class GovDocAgent(RoutedAgent):
                 }
                 for d in doc_refs
             ],
+            "_pipeline_start_time": pipeline_start.isoformat()
         }
             
         # 5) Check if we have documents
@@ -379,7 +390,12 @@ class GovDocAgent(RoutedAgent):
         
         except Exception as e:
             print("[MCP] fallback due to:", e)
-        browser_links.sort(key=lambda x: (-(1 if x.filetype == "pdf" else 0), -x.score, x.title.lower()))
+        # Deterministic sorting: PDF first, then by score, then by URL (for consistency)
+        browser_links.sort(key=lambda x: (
+            -(1 if x.filetype == "pdf" else 0),  # PDF files first
+            -x.score,                              # Higher score first
+            x.url.lower()                          # Then by URL (deterministic)
+        ))
         return browser_links
 
     async def _llm_rerank_and_summarize(self, links: List[GovDocLink], loc: LocationInfo, ctx: MessageContext):
@@ -399,7 +415,43 @@ class GovDocAgent(RoutedAgent):
         )
         try:
             res = await self._llm.on_messages([tm], ctx.cancellation_token)
-            data = json.loads(res.chat_message.content)
+            
+            # Try to track cost
+            prompt_text = prompt + "\n\nCANDIDATES:\n" + json.dumps(items, ensure_ascii=False)
+            prompt_tokens_est = len(prompt_text.split()) * 1.3
+            content = res.chat_message.content.strip()
+            completion_tokens_est = len(content.split()) * 1.3
+            
+            # Try to get actual usage if available
+            usage = None
+            if hasattr(res, 'usage'):
+                usage = res.usage
+            elif hasattr(res, 'chat_message') and hasattr(res.chat_message, 'usage'):
+                usage = res.chat_message.usage
+            
+            if usage:
+                get_cost_tracker().record_usage(
+                    agent_name="GovDocAgent",
+                    operation="rerank_documents",
+                    model="gpt-4o-mini",
+                    usage={
+                        "prompt_tokens": getattr(usage, 'prompt_tokens', int(prompt_tokens_est)),
+                        "completion_tokens": getattr(usage, 'completion_tokens', int(completion_tokens_est)),
+                        "total_tokens": getattr(usage, 'total_tokens', int(prompt_tokens_est + completion_tokens_est))
+                    }
+                )
+            else:
+                # Fallback: estimate
+                get_cost_tracker().record_usage(
+                    agent_name="GovDocAgent",
+                    operation="rerank_documents",
+                    model="gpt-4o-mini",
+                    prompt_tokens=int(prompt_tokens_est),
+                    completion_tokens=int(completion_tokens_est),
+                    total_tokens=int(prompt_tokens_est + completion_tokens_est)
+                )
+            
+            data = json.loads(content)
             boosts = {d["url"]: (float(d.get("boost", 0)), d.get("summary", "")) for d in data.get("items", [])}
             for l in links:
                 if l.url in boosts:
@@ -407,7 +459,12 @@ class GovDocAgent(RoutedAgent):
                     l.score += b
                     if s:
                         l.snippet = (s.strip() + " ") + (l.snippet or "")
-            links.sort(key=lambda x: (-(1 if x.filetype == "pdf" else 0), -x.score, x.title.lower()))
+            # Deterministic sorting after LLM reranking
+            links.sort(key=lambda x: (
+                -(1 if x.filetype == "pdf" else 0),  # PDF files first
+                -x.score,                              # Higher score first
+                x.url.lower()                          # Then by URL (deterministic)
+            ))
         except Exception:
             pass
         return links

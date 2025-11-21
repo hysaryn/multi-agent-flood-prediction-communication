@@ -11,6 +11,7 @@ from autogen_core import (
 
 from app.models.message_model import Message
 from app.models.action_plan_models import ActionPlanResponse
+from app.services.cost_tracker import get_cost_tracker
 from openai import OpenAI
 from typing import Dict
 import json
@@ -64,6 +65,8 @@ class ActionPlanEvaluatorAgent(RoutedAgent):
             location = input_data.get("location", "Unknown")
             risk_level = "Warning"
 
+            pipeline_start_time = input_data.get("_pipeline_start_time")
+
             # Check if ActionPlan failed
             if action_plan_json is None or "error" in input_data:
                 error_msg = input_data.get("error", "Action plan generation failed")
@@ -108,7 +111,8 @@ class ActionPlanEvaluatorAgent(RoutedAgent):
                     "original_plan": action_plan_json,
                     "evaluation": eval_result,
                     "govdoc_data": govdoc_data,
-                    "location": location
+                    "location": location,
+                    "_pipeline_start_time": pipeline_start_time
                 }
                 
                 # RevisionAgent returns final selected plan
@@ -116,30 +120,113 @@ class ActionPlanEvaluatorAgent(RoutedAgent):
                     Message(content=json.dumps(revision_request)),
                     AgentId("Revision", "default")
                 )
-                
+
                 # Add original evaluation to response
                 final_data = json.loads(final_response.content)
                 final_data["original_evaluation"] = eval_result
+
+                from datetime import datetime, timezone
+                pipeline_end = datetime.now(timezone.utc)
+                pipeline_end_time = pipeline_end.isoformat()
+                
+                 
+                total_processing_seconds = None
+                if pipeline_start_time:
+                    try:
+                        start_dt = datetime.fromisoformat(pipeline_start_time.replace('Z', '+00:00'))
+                        total_processing_seconds = (pipeline_end - start_dt).total_seconds()
+                    except Exception as e:
+                        print(f"[EvaluatorAgent] ⚠️ Could not calculate duration: {e}")
+                if "final_plan" in final_data and isinstance(final_data["final_plan"], dict):
+                    final_data["final_plan"]["pipeline_start_time"] = pipeline_start_time
+                    final_data["final_plan"]["pipeline_end_time"] = pipeline_end_time
+                    final_data["final_plan"]["total_processing_seconds"] = total_processing_seconds
+                
+                if total_processing_seconds:
+                    print(f"[EvaluatorAgent] ⏱️  Total Processing Time: {total_processing_seconds:.2f}s")
+                
+                # Add cost summary to response
+                cost_summary = get_cost_tracker().get_summary()
+                final_data["cost_summary"] = cost_summary
+                get_cost_tracker().print_summary()
+                
+                print(f"[{pipeline_end_time}] [Pipeline] Completed\n")
                 
                 return Message(content=json.dumps(final_data, indent=2, ensure_ascii=False))
             
             elif recommendation == "APPROVE":
                 print(f"\n[EvaluatorAgent] ✅ Plan approved without revision")
                 
+                # Calculate timestamps for APPROVE case
+                from datetime import datetime, timezone
+                pipeline_end = datetime.now(timezone.utc)
+                pipeline_end_time = pipeline_end.isoformat()
+                
+                total_processing_seconds = None
+                if pipeline_start_time:
+                    try:
+                        start_dt = datetime.fromisoformat(pipeline_start_time.replace('Z', '+00:00'))
+                        total_processing_seconds = (pipeline_end - start_dt).total_seconds()
+                    except Exception as e:
+                        print(f"[EvaluatorAgent] ⚠️ Could not calculate duration: {e}")
+                
+                # Add timestamps to final_plan
+                final_plan_with_timestamps = action_plan_json.copy()
+                if isinstance(final_plan_with_timestamps, dict):
+                    final_plan_with_timestamps["pipeline_start_time"] = pipeline_start_time
+                    final_plan_with_timestamps["pipeline_end_time"] = pipeline_end_time
+                    final_plan_with_timestamps["total_processing_seconds"] = total_processing_seconds
+                
+                if total_processing_seconds:
+                    print(f"[EvaluatorAgent] ⏱️  Total Processing Time: {total_processing_seconds:.2f}s")
+                
+                # Add cost summary to response
+                cost_summary = get_cost_tracker().get_summary()
+                get_cost_tracker().print_summary()
+                
+                print(f"[{pipeline_end_time}] [Pipeline] Completed\n")
+                
                 return Message(content=json.dumps({
                     "status": "approved",
                     "selected_version": "original",
-                    "final_plan": action_plan_json,
-                    "evaluation": eval_result
+                    "final_plan": final_plan_with_timestamps,
+                    "evaluation": eval_result,
+                    "cost_summary": cost_summary
                 }, indent=2, ensure_ascii=False))
             
             else:  # BLOCK
                 print(f"\n[EvaluatorAgent] ❌ Plan blocked (quality too low)")
                 
+                # Calculate timestamps for BLOCK case
+                from datetime import datetime, timezone
+                pipeline_end = datetime.now(timezone.utc)
+                pipeline_end_time = pipeline_end.isoformat()
+                
+                total_processing_seconds = None
+                if pipeline_start_time:
+                    try:
+                        start_dt = datetime.fromisoformat(pipeline_start_time.replace('Z', '+00:00'))
+                        total_processing_seconds = (pipeline_end - start_dt).total_seconds()
+                    except Exception as e:
+                        print(f"[EvaluatorAgent] ⚠️ Could not calculate duration: {e}")
+                
+                if total_processing_seconds:
+                    print(f"[EvaluatorAgent] ⏱️  Total Processing Time: {total_processing_seconds:.2f}s")
+                
+                # Add cost summary to response
+                cost_summary = get_cost_tracker().get_summary()
+                get_cost_tracker().print_summary()
+                
+                print(f"[{pipeline_end_time}] [Pipeline] Completed\n")
+                
                 return Message(content=json.dumps({
                     "status": "blocked",
                     "evaluation": eval_result,
-                    "reason": "Plan quality below minimum acceptable threshold"
+                    "reason": "Plan quality below minimum acceptable threshold",
+                    "pipeline_start_time": pipeline_start_time,
+                    "pipeline_end_time": pipeline_end_time,
+                    "total_processing_seconds": total_processing_seconds,
+                    "cost_summary": cost_summary
                 }, indent=2, ensure_ascii=False))
         
         except Exception as e:
@@ -350,9 +437,30 @@ JSON output:
                     {"role": "system", "content": "You evaluate emergency plans objectively."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2,
+                temperature=0.0,  # Set to 0.0 for maximum consistency
                 max_tokens=2000
             )
+            
+            # Track cost and check for truncation
+            if hasattr(response, 'usage') and response.usage:
+                completion_tokens = response.usage.completion_tokens
+                max_tokens_set = 2000
+                
+                # Warn if approaching max_tokens limit (possible truncation)
+                if completion_tokens >= max_tokens_set * 0.9:  # Used 90% or more
+                    print(f"[EvaluatorAgent] ⚠️  High token usage: {completion_tokens}/{max_tokens_set} tokens used")
+                    print(f"[EvaluatorAgent]    Consider increasing max_tokens if output is truncated")
+                
+                get_cost_tracker().record_usage(
+                    agent_name="EvaluatorAgent",
+                    operation="evaluate_plan",
+                    model=self._model,
+                    usage={
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": response.usage.total_tokens
+                    }
+                )
             
             content = response.choices[0].message.content.strip()
             
@@ -362,7 +470,15 @@ JSON output:
                     lines = lines[:-1]
                 content = "\n".join(lines).strip()
             
-            return json.loads(content)
+            # Try to parse JSON, catch truncation errors
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError as e:
+                print(f"[EvaluatorAgent] ❌ JSON parse error (possible truncation): {e}")
+                print(f"[EvaluatorAgent]    Content length: {len(content)} chars")
+                print(f"[EvaluatorAgent]    Content preview: {content[:200]}...")
+                # Re-raise to trigger fallback
+                raise
         
         except Exception as e:
             print(f"[EvaluatorAgent] ❌ LLM error: {e}")
