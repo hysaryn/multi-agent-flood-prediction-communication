@@ -1,0 +1,71 @@
+[project]
+name = "flood-communication-backend"
+version = "0.1.0"
+description = "Flood Prediction Communication System backend"
+readme = "../README.md"
+requires-python = ">=3.12"
+dependencies = [
+  # Core web
+  "fastapi>=0.115.0",
+  "uvicorn[standard]==0.24.0",
+
+  # Environment
+  "python-dotenv>=1.0.1",
+
+  # Geo & HTTP
+  "geopy>=2.4.1",
+  "requests>=2.32.3",
+  "aiohttp>=3.9.5",
+
+  # Data modeling
+  "pydantic>=2.6.0,<3.0.0",
+  "typing-extensions>=4.8.0",
+
+  # AutoGen stack
+  "autogen-core>=0.4.9.2",
+  "autogen-agentchat>=0.4.9.2",
+  "autogen-ext[grpc,mcp,ollama,openai]>=0.4.9.2",
+  "tiktoken>=0.7.0",
+  "openai>=1.68.2",
+  "openai-agents>=0.0.6",
+
+  # Browser tooling & MCP (optional but supported)
+  "mcp-server-fetch>=2025.1.17",
+  "mcp[cli]>=1.5.0",
+  "playwright>=1.51.0",
+  "nest-asyncio>=1.6.0",
+
+  # Async & HTTP client
+  "anyio>=4.6.0",
+  "httpx>=0.28.1",
+
+  # Parsing & PDF
+  "beautifulsoup4>=4.12.3",
+  "PyMuPDF>=1.24.10",
+]
+
+[tool.uv]
+package = true
+
+[dependency-groups]
+dev = [
+  "ipykernel>=6.29.5",
+]
+
+[build-system]
+requires = ["hatchling>=1.21.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.hatch.build.targets.editable]
+packages = ["app"]
+
+[project.scripts]
+api = "app.main:main"
+govdoc = "app.agents.govdoc_agent:main"
+action_plan = "app.agents.action_plan_agent:main"
+evaluator = "app.agents.evaluator_agent:main"
+
+
