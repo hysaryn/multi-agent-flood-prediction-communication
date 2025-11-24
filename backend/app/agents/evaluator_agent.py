@@ -86,9 +86,8 @@ class ActionPlanEvaluatorAgent(RoutedAgent):
             # ========== Evaluate Original Plan ==========
             print(f"\n[EvaluatorAgent] 📊 Evaluating original plan...")
             
-            coverage_data = self._check_category_coverage(original_plan)
-            eval_result = await self._llm_evaluate(original_plan, location, risk_level, coverage_data, ctx)
-            eval_result = self._calculate_final_scores(eval_result, coverage_data)
+            eval_result = await self._llm_evaluate(original_plan, location, risk_level, ctx)
+            eval_result = self._calculate_final_scores(eval_result)
             recommendation = self._determine_recommendation(eval_result)
             eval_result["recommendation"] = recommendation
             
@@ -329,98 +328,97 @@ class ActionPlanEvaluatorAgent(RoutedAgent):
             "regressions": regressions
         }
     
-    def _check_category_coverage(self, action_plan: ActionPlanResponse) -> Dict:
-        """Check category coverage."""
-        all_actions = (action_plan.before_flood + 
-                       action_plan.during_flood + 
-                       action_plan.after_flood)
-        
-        categories_found = set()
-        for action in all_actions:
-            if action.category:
-                categories_found.add(action.category.lower().strip())
-        
-        essential_categories = {
-            'evacuation', 'property_protection', 'emergency_kit',
-            'communication', 'insurance', 'family_plan'
-        }
-        
-        matched = set()
-        for essential in essential_categories:
-            for found in categories_found:
-                if essential in found or found in essential:
-                    matched.add(essential)
-                    break
-        
-        total = len(all_actions)
-        before_pct = (len(action_plan.before_flood) / total * 100) if total > 0 else 0
-        during_pct = (len(action_plan.during_flood) / total * 100) if total > 0 else 0
-        after_pct = (len(action_plan.after_flood) / total * 100) if total > 0 else 0
-        
-        return {
-            'coverage_ratio': len(matched) / len(essential_categories),
-            'categories_matched': list(matched),
-            'categories_found': list(categories_found),
-            'missing_essential': list(essential_categories - matched),
-            'total_actions': total,
-            'before_count': len(action_plan.before_flood),
-            'during_count': len(action_plan.during_flood),
-            'after_count': len(action_plan.after_flood),
-            'before_pct': round(before_pct, 1),
-            'during_pct': round(during_pct, 1),
-            'after_pct': round(after_pct, 1),
-        }
-    
     async def _llm_evaluate(
         self, 
         action_plan: ActionPlanResponse,
         location: str,
         risk_level: str,
-        coverage_data: Dict,
         ctx: MessageContext
     ) -> Dict:
         """LLM evaluation."""
         
         prompt = f"""Evaluate this flood action plan for {location}.
 
-SUMMARY:
-- Before: {coverage_data['before_count']} ({coverage_data['before_pct']}%)
-- During: {coverage_data['during_count']} ({coverage_data['during_pct']}%)
-- After: {coverage_data['after_count']} ({coverage_data['after_pct']}%)
-- Coverage: {coverage_data['coverage_ratio']:.0%}, Missing: {coverage_data['missing_essential']}
-
 PLAN:
 {action_plan.model_dump_json(indent=2, exclude_none=True)}
 
-"EVALUATION CRITERIA (each scored 0.0-1.0, equal weight):\n\n"
-    "1. ACCURACY (1.0): All claims must be supported by evidence (location, risk level, geo/time alignment).\n"
-    "   - Penalize any mismatch or invented numbers\n"
-    "   - Verify location-specific facts match the provided location\n"
-    "   - Verify risk level aligns with stated risk tier\n"
-    "   - Verify geographic and temporal information is consistent\n"
-    "   - HARD-GATE: Score < 0.6 = automatic REVISE\n\n"
-    "2. CLARITY (1.0): Plain language, short sentences, imperative actions (\"Do XX\").\n"
-    "   - Penalize jargon (e.g., \"20-yr return periods\" without explanation)\n"
-    "   - Use direct, actionable language\n"
-    "   - Keep sentences short and clear\n"
-    "   - Use imperative mood for actions (\"Do X\", \"Go to Y\", \"Call Z\")\n\n"
-    "3. COMPLETENESS (1.0): Coverage checklist - contains who/what/where/when/how.\n"
-    "   - Action plans should cover 6-10 core categories (evacuation, kit, insurance, etc.)\n"
-    "   - Ensure who/what/where/when/how are present\n"
-    "   - Include time windows and contact information where applicable\n"
-    "   - Verify essential action categories are covered\n\n"
-    "4. RELEVANCE (1.0): Content tailored to user's location/risk level/phase/audience.\n"
-    "   - No off-region steps\n"
-    "   - Aligns with the stated risk tier\n"
-    "   - Location-specific information matches the provided location\n"
-    "   - Appropriate for the target audience\n\n"
-    "5. COHERENCE (1.0): Logical order (Before → During → After), no contradictions, no duplicates, consistent terms.\n"
-    "   - Verify logical flow: Before → During → After\n"
-    "   - Check for contradictions between sections\n"
-    "   - Identify duplicate or redundant information\n"
-    "   - Ensure consistent terminology across sections\n\n"
+"EVALUATION CRITERIA:\n\n"
+Dimension 1: ACCURACY
+Definition: "Is the information factually correct and verifiable?"
+Questions:
+Do the sources mentioned seem authoritative?
+Do the contact numbers/websites seem legitimate?
+Are the evacuation routes mentioned realistic for this area?
+QUICK SCORES
+5 - All sources cited, verified official
+4 - Most information appears official; mostly trustworthy 
+3 - Some sources, some uncertainty
+2 - Hard to verify; low confidence in accuracy 
+1 - Not trustworthy; information seems fabricated
 
-JSON output:
+Dimension 2: CLARITY
+Definition: Is the guidance easy to understand for someone without emergency training?
+Questions:
+The language is easy to understand
+The steps are presented in a logical order
+Technical jargon is minimized (Ask participant to underline any words/phrases they found confusing)
+Example:
+✅Move valuables to 2nd floor(specific action + location; no jargon) 
+❌Relocate personal effects to upper-floor proximity (vague, formal, hard to parse)
+QUICK SCORES
+5 - 0 confusing words; reads smoothly 
+4 - 1 confusing word; minor hesitation 
+3 - 2~3 confusing words; re-reading needed 
+2 - more than 3 confusing words; repeated clarification 
+1 - Incomprehensible; unable to understand; language is too technical
+
+Dimension 3: COMPLETENESS
+Definition: Does the guidance cover all essential preparedness categories?
+Show Participant: Checklist of categories:
+□ Communication (how to get alerts)
+□ Evacuation (where to go, routes)
+□ Property Protection (protecting belongings)
+□ Insurance/Financial (recovery support) *
+□ Family Planning (staying together, communication)
+□ Emergency Kit (supplies, essentials)
+Questions:
+Which of these categories are covered in the guidance?
+Are there any important categories missing? (Open-ended)
+QUICK SCORES
+5 - Covers all categories (alerts, evacuation, property, insurance, family, supplies) 
+4 - Covers most categories; missing one 
+3 - Covers roughly half the important categories 
+2 - Missing several important topics 
+1 - Severely incomplete; critical information missing
+
+Dimension 4: RELEVANCE
+Definition: Is the guidance specific to your location?
+Questions:
+The guidance mentions your specific location/neighborhood
+The guidance is tailored to your area's flood risks
+The recommended routes make sense for where you live
+QUICK SCORES
+5 = 4+ location-specific details (mentions of: neighborhood names, streets, local agencies); not transferable
+4 = 2-3 specific details; mostly relevant 
+3 = 1 specific detail; mix of generic/specific 
+2 = Minimal specificity; mostly generic 
+1 = Zero specificity; completely generic
+
+Dimension 5: COHERENCE
+Definition: Is the guidance internally consistent and logical?
+Questions:
+The guidance flows logically (before → during → after)
+There are no contradictions in the instructions
+The timeline/deadlines make sense together
+Test: Ask participant to identify any contradictions they notice(open-end)
+QUICK SCORES
+5 - Perfect flow; before→during→after makes sense 
+4 - Mostly logical; one confusing element 
+3 - Some confusion; 2-3 contradictions 
+2 - Confusing flow; multiple contradictions 
+1 - Makes no sense; severe contradictions 
+
+JSON output (return ONLY this JSON, no markdown, no preamble):
 {{
   "accuracy": {{"score": 0.0, "justification": "...", "issues": []}},
   "clarity": {{"score": 0.0, "justification": "...", "issues": []}},
@@ -495,7 +493,7 @@ JSON output:
                          "phase_errors": [], "duplicate_actions": [], "contradictions": []},
         }
     
-    def _calculate_final_scores(self, eval_result: Dict, coverage_data: Dict) -> Dict:
+    def _calculate_final_scores(self, eval_result: Dict) -> Dict:
         """Calculate weighted overall score."""
         weights = {
             'accuracy': 0.25,
@@ -511,11 +509,11 @@ JSON output:
         )
         
         thresholds = {
-            'accuracy': 0.8,
-            'clarity': 0.7,
-            'completeness': 0.7,
-            'relevance': 0.7,
-            'coherence': 0.8
+            'accuracy': 4,
+            'clarity': 3.5,
+            'completeness': 3.5,
+            'relevance': 3.5,
+            'coherence': 4
         }
         
         passes_threshold = all(
@@ -523,7 +521,7 @@ JSON output:
             for dim, threshold in thresholds.items()
         )
         
-        confidence = "high" if overall_score >= 0.85 else "medium" if overall_score >= 0.70 else "low"
+        confidence = "high" if overall_score >= 4.25 else "medium" if overall_score >= 3.5 else "low"
         
         eval_result.update({
             'overall_score': round(overall_score, 3),
@@ -531,14 +529,13 @@ JSON output:
             'overall_confidence': confidence,
             'weights': weights,
             'thresholds': thresholds,
-            'coverage_data': coverage_data
         })
         
         return eval_result
     
     def _determine_recommendation(self, eval_result: Dict) -> str:
         """Determine recommendation."""
-        if eval_result['accuracy']['score'] < 0.6:
+        if eval_result['accuracy']['score'] < 3.0:
             return "BLOCK"
         
         contradictions = eval_result['coherence'].get('contradictions', [])
@@ -547,10 +544,10 @@ JSON output:
             if any(kw in text for kw in ['stay', 'evacuate', 'leave', 'remain']):
                 return "BLOCK"
         
-        if eval_result['passes_threshold'] and eval_result['overall_score'] >= 0.75:
+        if eval_result['passes_threshold'] and eval_result['overall_score'] >= 3.75:
             return "APPROVE"
         
-        if eval_result['overall_score'] >= 0.65:
+        if eval_result['overall_score'] >= 3.65:
             return "REVISE"
         
         return "BLOCK"

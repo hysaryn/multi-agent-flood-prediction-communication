@@ -320,7 +320,7 @@ JSON:"""
         action_plan.during_flood = new_during
         action_plan.after_flood = new_after
         
-        return action_plan  # ✅ 必须返回
+        return action_plan   
     
     async def _enhance_clarity(self, action_plan: ActionPlanResponse, location: str, ctx: MessageContext) -> int:
         """Enhance vague actions."""
@@ -335,7 +335,7 @@ JSON:"""
                         actions[i] = enhanced
                         count += 1
         
-        return count  # ✅ 返回增强的数量
+        return count   
     
     async def _enhance_single_action(self, action: Action, location: str) -> Action:
         """Enhance one action."""
@@ -380,7 +380,7 @@ Return ONLY enhanced description (no JSON, no title):"""
                 source_doc=action.source_doc
             )
         except:
-            return action  # ✅ 失败时返回原 action
+            return action   
     
     # ... (keep all other helper methods from the evaluator_agent.py that you already have)
     # _check_category_coverage, _llm_evaluate, _calculate_final_scores, 
