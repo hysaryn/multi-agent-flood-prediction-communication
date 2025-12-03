@@ -235,8 +235,11 @@ class GovDocAgent(RoutedAgent):
         from app.services.cost_tracker import reset_cost_tracker
         reset_cost_tracker()
         
-        pipeline_start = datetime.now(timezone.utc)
-        print(f"\n[{pipeline_start.isoformat()}] [Pipeline] Started")
+        agent_start_time = datetime.now(timezone.utc)
+        pipeline_start = agent_start_time
+        print(f"\n[GovDocAgent] ═══════════════════════════════════════")
+        print(f"[{pipeline_start.isoformat()}] [Pipeline] Started")
+        print(f"[GovDocAgent] Started at: {agent_start_time.isoformat()}")
         print(f"[GovDocAgent] Processing location: {message.content.strip()}")
 
         # 1) Get structured location information
@@ -329,16 +332,43 @@ class GovDocAgent(RoutedAgent):
             
         # 5) Check if we have documents
         if not doc_refs:
+            agent_end_time = datetime.now(timezone.utc)
+            agent_duration = (agent_end_time - agent_start_time).total_seconds()
             print(f"[GovDocAgent] ❌ No documents downloaded")
+            print(f"[GovDocAgent] ⏱️  Agent execution time: {agent_duration:.2f}s (failed)")
+            print(f"[GovDocAgent] Ended at: {agent_end_time.isoformat()}")
+            print(f"[GovDocAgent] ═══════════════════════════════════════\n")
             return Message(content=json.dumps({
                 "status": "error",
                 "error": "No documents found or downloaded",
-                "location": message.content.strip()
+                "location": message.content.strip(),
+                "_agent_timestamps": {
+                    "GovDocAgent": {
+                        "start_time": agent_start_time.isoformat(),
+                        "end_time": agent_end_time.isoformat(),
+                        "duration_seconds": agent_duration,
+                        "status": "error"
+                    }
+                }
             }, ensure_ascii=False))
             
         # 6) Sequential flow: Pass govdoc_payload directly to ActionPlanAgent
+        agent_end_time = datetime.now(timezone.utc)
+        agent_duration = (agent_end_time - agent_start_time).total_seconds()
         print(f"\n[GovDocAgent] ✅ Document collection complete ({len(doc_refs)} docs)")
+        print(f"[GovDocAgent] ⏱️  Agent execution time: {agent_duration:.2f}s")
+        print(f"[GovDocAgent] Ended at: {agent_end_time.isoformat()}")
+        print(f"[GovDocAgent] ═══════════════════════════════════════\n")
         print(f"[GovDocAgent] → Calling ActionPlanAgent...")
+        
+        # Add agent timestamps to payload
+        govdoc_payload["_agent_timestamps"] = {
+            "GovDocAgent": {
+                "start_time": agent_start_time.isoformat(),
+                "end_time": agent_end_time.isoformat(),
+                "duration_seconds": agent_duration
+            }
+        }
             
         return await self._runtime.send_message( 
         Message(content=json.dumps(govdoc_payload, ensure_ascii=False)),

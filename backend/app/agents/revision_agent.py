@@ -42,16 +42,20 @@ class RevisionAgent(RoutedAgent):
         """
         Revise, compare, and return the better version.
         """
+        from datetime import datetime, timezone
+        agent_start_time = datetime.now(timezone.utc)
+        
         try:
             input_data = json.loads(message.content)
             original_plan_json = input_data.get("original_plan")
             original_evaluation = input_data.get("evaluation")
             govdoc_data = input_data.get("govdoc_data")
             location = input_data.get("location")
-            
+            previous_timestamps = input_data.get("_agent_timestamps", {})
 
             pipeline_start_time = input_data.get("_pipeline_start_time")
             print(f"\n[RevisionAgent] ═══════════════════════════════════════")
+            print(f"[RevisionAgent] Started at: {agent_start_time.isoformat()}")
             print(f"[RevisionAgent] Starting revision for {location}")
             print(f"[RevisionAgent] ═══════════════════════════════════════")
             
@@ -153,6 +157,13 @@ class RevisionAgent(RoutedAgent):
             
             print(f"[RevisionAgent] ✅ Selected: {selected_version.upper()}")
             
+            # Add agent timestamps
+            agent_end_time = datetime.now(timezone.utc)
+            agent_duration = (agent_end_time - agent_start_time).total_seconds()
+            print(f"[RevisionAgent] ⏱️  Agent execution time: {agent_duration:.2f}s")
+            print(f"[RevisionAgent] Ended at: {agent_end_time.isoformat()}")
+            print(f"[RevisionAgent] ═══════════════════════════════════════\n")
+            
             return Message(content=json.dumps({
                 "status": status,
                 "selected_version": selected_version,
@@ -160,16 +171,36 @@ class RevisionAgent(RoutedAgent):
                 "comparison": comparison,
                 "original_evaluation": original_evaluation,
                 "revised_evaluation": revised_evaluation,
-                "changes_made": changes_made
+                "changes_made": changes_made,
+                "_agent_timestamps": {
+                    **previous_timestamps,
+                    "RevisionAgent": {
+                        "start_time": agent_start_time.isoformat(),
+                        "end_time": agent_end_time.isoformat(),
+                        "duration_seconds": agent_duration
+                    }
+                }
             }, indent=2, ensure_ascii=False))
         
         except Exception as e:
+            agent_end_time = datetime.now(timezone.utc)
+            agent_duration = (agent_end_time - agent_start_time).total_seconds()
             print(f"[RevisionAgent] ❌ Error: {e}")
+            print(f"[RevisionAgent] ⏱️  Agent execution time: {agent_duration:.2f}s (failed)")
             import traceback
             traceback.print_exc()
             return Message(content=json.dumps({
                 "error": str(e),
-                "status": "error"
+                "status": "error",
+                "_agent_timestamps": {
+                    **previous_timestamps,
+                    "RevisionAgent": {
+                        "start_time": agent_start_time.isoformat(),
+                        "end_time": agent_end_time.isoformat(),
+                        "duration_seconds": agent_duration,
+                        "status": "error"
+                    }
+                }
             }))
     
     # ========== Helper Methods ==========

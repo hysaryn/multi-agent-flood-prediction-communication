@@ -342,6 +342,16 @@ class ActionPlanEvaluatorAgent(RoutedAgent):
 PLAN:
 {action_plan.model_dump_json(indent=2, exclude_none=True)}
 
+SUMMARY:
+- Before: {len(action_plan.before_flood)} actions
+- During: {len(action_plan.during_flood)} actions
+- After: {len(action_plan.after_flood)} actions
+- Total: {action_plan.total_actions()} actions
+
+EVALUATION INSTRUCTIONS:
+You MUST provide scores on a scale of 1.0 to 5.0 (decimals allowed).
+DO NOT default to 5.0 - critically assess each dimension.
+
 "EVALUATION CRITERIA:\n\n"
 Dimension 1: ACCURACY
 Definition: "Is the information factually correct and verifiable?"
@@ -411,6 +421,30 @@ The guidance flows logically (before → during → after)
 There are no contradictions in the instructions
 The timeline/deadlines make sense together
 Test: Ask participant to identify any contradictions they notice(open-end)
+
+CRITICAL: DUPLICATE DETECTION RULES
+A duplicate is when THE SAME ACTION appears multiple times with:
+- Same/similar title AND
+- Same/similar description AND
+- No meaningful difference in context or specificity
+
+TYPES OF DUPLICATES:
+
+**MAJOR DUPLICATES (Always penalize -0.2 each):**
+- Exact same action repeated: "Purchase flood insurance" appearing 3 times with nearly identical descriptions
+- Minor wording variations: "Evacuate when instructed" / "Evacuate if told" / "Follow evacuation orders" (3 near-identical items)
+- Same content, different sources: If the only difference is source_doc, it's a duplicate
+
+**ACCEPTABLE VARIATIONS (Do NOT penalize):**
+- Different contexts: "Shut off utilities BEFORE evacuating" vs "Know WHERE utilities are shut off" vs "PRACTICE shutting off utilities"
+- Different timing: "Plan evacuation route" (before) vs "Follow evacuation route" (during)
+- Different specificity: "Register for alerts" vs "Check Brisbane Severe Weather Alert at [URL]" vs "Monitor alert system during storm"
+- Different aspects: "Purchase insurance" vs "Review insurance annually" vs "File insurance claim"
+
+**PHASE ERRORS (Always penalize -0.3 each):**
+- Actions in wrong phase: "Plan evacuation routes" in "During Flood" (should be "Before")
+- Recovery actions in preparation phase
+- Preparation actions in response phase
 QUICK SCORES
 5 - Perfect flow; before→during→after makes sense 
 4 - Mostly logical; one confusing element 
