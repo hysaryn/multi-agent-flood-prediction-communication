@@ -1,0 +1,584 @@
+{
+ "status": "approved",
+ "selected_version": "original",
+ "final_plan": {
+   "location": "Vancouver, BC",
+   "display_name": null,
+   "before_flood": [
+     {
+       "title": "Purchase flood insurance",
+       "description": "Contact your insurance provider to obtain flood coverage to protect your property from potential flood damage.",
+       "priority": "high",
+       "category": "insurance",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Prepare an emergency kit",
+       "description": "Compile a kit with essential supplies including water, food, medication, flashlight, batteries, and first aid supplies to last at least 72 hours.",
+       "priority": "high",
+       "category": "preparation",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Create a family communication plan",
+       "description": "Establish a plan to ensure all family members know how to reach one another and where to meet in case of evacuation.",
+       "priority": "high",
+       "category": "planning",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Know your evacuation routes",
+       "description": "Familiarize yourself with multiple evacuation routes from your neighborhood to avoid congestion during an emergency.",
+       "priority": "high",
+       "category": "planning",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Stay informed about flood risks",
+       "description": "Regularly check weather reports and local alerts regarding Mosquito Creek's flood potential and any warnings issued by local authorities.",
+       "priority": "high",
+       "category": "planning",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Elevate electrical appliances",
+       "description": "Raise electrical appliances and utilities above potential flood levels to prevent damage during flooding.",
+       "priority": "medium",
+       "category": "protection",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Secure hazardous materials",
+       "description": "Identify and secure hazardous materials around your home that could cause additional harm during flooding, such as chemicals and fuels.",
+       "priority": "medium",
+       "category": "protection",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Plan for pets",
+       "description": "Include your pets in your emergency plan and ensure you have supplies for their care during an evacuation.",
+       "priority": "medium",
+       "category": "planning",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Store important documents safely",
+       "description": "Keep important documents (insurance, ID, medical records) in a waterproof container or a safe place to ensure they are not lost during flooding.",
+       "priority": "medium",
+       "category": "planning",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Identify local evacuation routes",
+       "description": "Familiarize yourself with the safest routes out of your neighborhood in the event of a flood, including routes to local emergency shelters.",
+       "priority": "high",
+       "category": "evacuation",
+       "source_doc": "https://guidelines.vancouver.ca/guidelines-flood-plain-standards-requirements.pdf"
+     },
+     {
+       "title": "Conduct home flood-proofing",
+       "description": "Elevate appliances and electrical systems above flood construction levels (FCLs) and install barriers to redirect floodwaters.",
+       "priority": "high",
+       "category": "protection",
+       "source_doc": "https://guidelines.vancouver.ca/guidelines-flood-plain-standards-requirements.pdf"
+     },
+     {
+       "title": "Review floodplain maps",
+       "description": "Consult the latest floodplain maps available from the City of Vancouver to understand the flood risk associated with your property.",
+       "priority": "medium",
+       "category": "preparation",
+       "source_doc": "https://guidelines.vancouver.ca/guidelines-flood-plain-standards-requirements.pdf"
+     },
+     {
+       "title": "Regularly clear drainage systems",
+       "description": "Ensure that gutters and drainage systems are clear of debris to facilitate proper water runoff and reduce flooding risks.",
+       "priority": "medium",
+       "category": "maintenance",
+       "source_doc": "https://guidelines.vancouver.ca/guidelines-flood-plain-standards-requirements.pdf"
+     },
+     {
+       "title": "Maintain contact with local emergency services",
+       "description": "Keep updated contact information for local emergency services, shelters, and community resource centers for flood events.",
+       "priority": "medium",
+       "category": "community contact",
+       "source_doc": "https://guidelines.vancouver.ca/guidelines-flood-plain-standards-requirements.pdf"
+     },
+     {
+       "title": "Learn evacuation procedures",
+       "description": "Familiarize yourself with local emergency evacuation routes and procedures specific to Vancouver, particularly in flood-prone areas.",
+       "priority": "high",
+       "category": "safety",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Practice utility shutoff",
+       "description": "Learn how to properly shut off gas, water, and electricity in your home to prevent hazards during a flood event.",
+       "priority": "high",
+       "category": "safety",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Document your property condition",
+       "description": "Take photos and videos of your property, including valuables, to document their condition for insurance claims in the event of flood damage.",
+       "priority": "high",
+       "category": "documentation",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Stay informed about local weather",
+       "description": "Regularly check weather forecasts and alerts for flood warnings in the Vancouver area, especially during the rainy season.",
+       "priority": "medium",
+       "category": "awareness",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Utilize flood resilience resources",
+       "description": "Engage with flood resilience programs offered by local organizations to better understand risks and mitigation strategies in the Vancouver area.",
+       "priority": "medium",
+       "category": "planning",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Elevate critical utilities and appliances",
+       "description": "Position major appliances and critical utilities (e.g., furnace, electrical panel) above the flood construction level to minimize damage.",
+       "priority": "medium",
+       "category": "protection",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Maintain drainage systems",
+       "description": "Regularly inspect and clean gutters, downspouts, and drainage systems to ensure they can adequately handle heavy rainfall.",
+       "priority": "medium",
+       "category": "maintenance",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Know emergency shelters",
+       "description": "Identify local emergency shelters in Vancouver where you and your family can go during a flooding emergency.",
+       "priority": "medium",
+       "category": "safety",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Monitor community alerts",
+       "description": "Sign up for community alerts and notifications regarding flooding and emergency services in the Vancouver area.",
+       "priority": "medium",
+       "category": "awareness",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Follow local agency guidelines",
+       "description": "Stay updated with flood preparedness guidelines provided by Metro Vancouver and other local agencies to ensure compliance with safety measures.",
+       "priority": "medium",
+       "category": "compliance",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Elevate electrical systems and utilities",
+       "description": "Ensure that electrical systems, heating systems, and utilities are elevated above the flood construction level as per local guidelines.",
+       "priority": "medium",
+       "category": "protection",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/environment/air-land-water/water/integrated-flood-hazard-mgmt/bc_flood_strategy.pdf"
+     },
+     {
+       "title": "Monitor weather forecasts",
+       "description": "Keep an eye on weather forecasts and flood warnings from local news and the Environment Canada website.",
+       "priority": "high",
+       "category": "awareness",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/environment/air-land-water/water/integrated-flood-hazard-mgmt/bc_flood_strategy.pdf"
+     },
+     {
+       "title": "Identify safe locations",
+       "description": "Determine safer locations, including local community centers and schools, that can serve as shelters during a flood.",
+       "priority": "medium",
+       "category": "planning",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/environment/air-land-water/water/integrated-flood-hazard-mgmt/bc_flood_strategy.pdf"
+     },
+     {
+       "title": "Prepare your vehicle",
+       "description": "Ensure that your vehicle is in working condition, filled with gas, and equipped with emergency supplies in case of evacuation.",
+       "priority": "medium",
+       "category": "safety",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/environment/air-land-water/water/integrated-flood-hazard-mgmt/bc_flood_strategy.pdf"
+     },
+     {
+       "title": "Prepare an emergency plan",
+       "description": "Create a comprehensive emergency plan that includes emergency meeting places, communication methods, and important contacts. Update it annually.",
+       "priority": "high",
+       "category": "planning",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/public-safety-and-emergency-services/emergency-preparedness-response-recovery/embc/preparedbc/preparedbc-guides/preparedbc_flood_preparedness_guide_fillable.pdf"
+     },
+     {
+       "title": "Make grab-and-go bags",
+       "description": "Pack bags with essential items like water, food, first aid kits, and personal documents. Store them in an easily accessible location.",
+       "priority": "high",
+       "category": "preparedness",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/public-safety-and-emergency-services/emergency-preparedness-response-recovery/embc/preparedbc/preparedbc-guides/preparedbc_flood_preparedness_guide_fillable.pdf"
+     },
+     {
+       "title": "Store valuables in elevated locations",
+       "description": "Place important documents and valuables in waterproof containers or elevated areas to protect them from potential flood damage.",
+       "priority": "medium",
+       "category": "protection",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/public-safety-and-emergency-services/emergency-preparedness-response-recovery/embc/preparedbc/preparedbc-guides/preparedbc_flood_preparedness_guide_fillable.pdf"
+     },
+     {
+       "title": "Clear gutters and drains",
+       "description": "Regularly clean gutters and ensure storm drains are clear of debris to help prevent water accumulation and potential flooding.",
+       "priority": "medium",
+       "category": "maintenance",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/public-safety-and-emergency-services/emergency-preparedness-response-recovery/embc/preparedbc/preparedbc-guides/preparedbc_flood_preparedness_guide_fillable.pdf"
+     },
+     {
+       "title": "Install flood-proofing measures",
+       "description": "Enhance your home with flood-resistant doors, backflow valves, and sump pumps to reduce flood risk.",
+       "priority": "medium",
+       "category": "protection",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/public-safety-and-emergency-services/emergency-preparedness-response-recovery/embc/preparedbc/preparedbc-guides/preparedbc_flood_preparedness_guide_fillable.pdf"
+     },
+     {
+       "title": "Monitor local emergency information",
+       "description": "Know where to find important alerts through local authorities, websites, and social media to stay updated during a flooding event.",
+       "priority": "medium",
+       "category": "information",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/public-safety-and-emergency-services/emergency-preparedness-response-recovery/embc/preparedbc/preparedbc-guides/preparedbc_flood_preparedness_guide_fillable.pdf"
+     }
+   ],
+   "during_flood": [
+     {
+       "title": "Monitor local flood alerts",
+       "description": "Subscribe to local alerts from the District of North Vancouver for updates on flood warnings and emergency instructions.",
+       "priority": "high",
+       "category": "planning",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Follow evacuation procedures",
+       "description": "If instructed by local authorities, evacuate immediately using the designated routes to ensure safety during flood conditions.",
+       "priority": "high",
+       "category": "safety",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Shut off utilities",
+       "description": "Turn off gas, electricity, and water before evacuation to prevent hazards such as gas leaks or electrical fires.",
+       "priority": "high",
+       "category": "safety",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Stay tuned to emergency updates",
+       "description": "Use battery-powered radios or mobile devices to stay informed about the flood situation and instructions from emergency services.",
+       "priority": "medium",
+       "category": "safety",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Shut off utilities before evacuation",
+       "description": "Prior to evacuating, shut off gas, power, and water services to prevent further hazards from flooding.",
+       "priority": "high",
+       "category": "evacuation",
+       "source_doc": "https://guidelines.vancouver.ca/guidelines-flood-plain-standards-requirements.pdf"
+     },
+     {
+       "title": "Evacuate to higher ground",
+       "description": "Follow pre-planned evacuation routes to move to designated shelters or higher ground away from flood risk areas.",
+       "priority": "high",
+       "category": "evacuation",
+       "source_doc": "https://guidelines.vancouver.ca/guidelines-flood-plain-standards-requirements.pdf"
+     },
+     {
+       "title": "Stay informed via local alerts",
+       "description": "Monitor local news reports and emergency alerts for real-time information on flooding and safety measures.",
+       "priority": "medium",
+       "category": "safety",
+       "source_doc": "https://guidelines.vancouver.ca/guidelines-flood-plain-standards-requirements.pdf"
+     },
+     {
+       "title": "Evacuate promptly if instructed",
+       "description": "If local authorities issue evacuation orders, evacuate immediately following the prescribed routes to ensure safety.",
+       "priority": "high",
+       "category": "evacuation",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Keep emergency kit accessible",
+       "description": "Ensure your emergency kit is easily accessible during a flooding event, ready for quick use if evacuation is necessary.",
+       "priority": "medium",
+       "category": "safety",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Stay tuned to local media",
+       "description": "Listen to local news and weather advisories to stay informed about the status of the flood and further emergency instructions.",
+       "priority": "medium",
+       "category": "communication",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Turn off utilities if flooded",
+       "description": "Know how to safely turn off gas, electricity, and water at the main shutoff points in your home before evacuating.",
+       "priority": "high",
+       "category": "safety",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/environment/air-land-water/water/integrated-flood-hazard-mgmt/bc_flood_strategy.pdf"
+     },
+     {
+       "title": "Follow evacuation orders",
+       "description": "Heed all evacuation orders from local authorities promptly to ensure your safety and the safety of your family.",
+       "priority": "high",
+       "category": "safety",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/environment/air-land-water/water/integrated-flood-hazard-mgmt/bc_flood_strategy.pdf"
+     },
+     {
+       "title": "Stay informed during a flood event",
+       "description": "Continue to monitor emergency services' updates regarding flood conditions and safety instructions via radio or mobile apps.",
+       "priority": "high",
+       "category": "awareness",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/environment/air-land-water/water/integrated-flood-hazard-mgmt/bc_flood_strategy.pdf"
+     },
+     {
+       "title": "Avoid flooded areas",
+       "description": "Do not attempt to walk, swim, or drive through floodwaters, as they may be deeper or moving faster than they appear.",
+       "priority": "high",
+       "category": "safety",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/environment/air-land-water/water/integrated-flood-hazard-mgmt/bc_flood_strategy.pdf"
+     },
+     {
+       "title": "Stay informed during the flood",
+       "description": "Monitor local news and authorities for updates regarding the status of the flood and any necessary actions to take.",
+       "priority": "medium",
+       "category": "safety",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/public-safety-and-emergency-services/emergency-preparedness-response-recovery/embc/preparedbc/preparedbc-guides/preparedbc_flood_preparedness_guide_fillable.pdf"
+     }
+   ],
+   "after_flood": [
+     {
+       "title": "Document flood damage",
+       "description": "Take photos or videos of any damage to your property immediately after the flood for insurance claims and recovery purposes.",
+       "priority": "high",
+       "category": "recovery",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Contact your insurance for claims",
+       "description": "After ensuring safety, contact your insurance provider to file claims for flood damage as soon as possible.",
+       "priority": "high",
+       "category": "insurance",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Begin cleanup process",
+       "description": "Start the cleanup process as soon as it is safe, removing water-damaged items and beginning repairs to prevent further damage.",
+       "priority": "medium",
+       "category": "recovery",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Seek local resources for assistance",
+       "description": "Connect with local agencies and community groups in Vancouver that offer assistance and resources for flood recovery.",
+       "priority": "medium",
+       "category": "recovery",
+       "source_doc": "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf"
+     },
+     {
+       "title": "Document damage after flooding",
+       "description": "Take photographs and notes of any damage to your property for insurance claims and recovery assistance applications.",
+       "priority": "high",
+       "category": "documentation",
+       "source_doc": "https://guidelines.vancouver.ca/guidelines-flood-plain-standards-requirements.pdf"
+     },
+     {
+       "title": "Clean up safely",
+       "description": "Ensure that you wear protective gear while cleaning up flood debris and contact local waste management for disposal guidance.",
+       "priority": "medium",
+       "category": "cleanup",
+       "source_doc": "https://guidelines.vancouver.ca/guidelines-flood-plain-standards-requirements.pdf"
+     },
+     {
+       "title": "Seek recovery assistance",
+       "description": "Investigate available local resources and assistance programs for flood recovery, including financial aid or restoration support.",
+       "priority": "medium",
+       "category": "recovery",
+       "source_doc": "https://guidelines.vancouver.ca/guidelines-flood-plain-standards-requirements.pdf"
+     },
+     {
+       "title": "Return only when safe",
+       "description": "After the flood, do not return home until officials declare it safe to do so, as unseen hazards may still be present.",
+       "priority": "medium",
+       "category": "recovery",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Document flood damages",
+       "description": "Take photographs and make lists of all damages for insurance claims and recovery assistance.",
+       "priority": "high",
+       "category": "documentation",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Begin cleanup safely",
+       "description": "Wear protective gear and handle cleanup with caution, ensuring that any hazardous materials or electrical issues are dealt with by professionals.",
+       "priority": "high",
+       "category": "cleanup",
+       "source_doc": "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf"
+     },
+     {
+       "title": "Document damages post-flood",
+       "description": "After the flood, take detailed photographs of any damage to your home and belongings for insurance claims.",
+       "priority": "high",
+       "category": "documentation",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/environment/air-land-water/water/integrated-flood-hazard-mgmt/bc_flood_strategy.pdf"
+     },
+     {
+       "title": "Contact your insurance company",
+       "description": "Report any flooding damages to your insurance provider as soon as possible to initiate the claims process.",
+       "priority": "high",
+       "category": "insurance",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/environment/air-land-water/water/integrated-flood-hazard-mgmt/bc_flood_strategy.pdf"
+     },
+     {
+       "title": "Seek community support services",
+       "description": "Reach out to local organizations and agencies that can provide assistance and resources for recovery and rebuilding.",
+       "priority": "medium",
+       "category": "recovery",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/environment/air-land-water/water/integrated-flood-hazard-mgmt/bc_flood_strategy.pdf"
+     },
+     {
+       "title": "Document damage post-flood",
+       "description": "Take photos and keep records of any flood-related damage to your property for insurance claims and recovery processes.",
+       "priority": "high",
+       "category": "recovery",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/public-safety-and-emergency-services/emergency-preparedness-response-recovery/embc/preparedbc/preparedbc-guides/preparedbc_flood_preparedness_guide_fillable.pdf"
+     },
+     {
+       "title": "Evaluate and update your emergency plan",
+       "description": "After experiencing a flood, review what worked and what didn’t in your emergency plan, and make necessary adjustments.",
+       "priority": "medium",
+       "category": "planning",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/public-safety-and-emergency-services/emergency-preparedness-response-recovery/embc/preparedbc/preparedbc-guides/preparedbc_flood_preparedness_guide_fillable.pdf"
+     },
+     {
+       "title": "Contact local aid organizations",
+       "description": "Reach out to local agencies or charities for assistance if you need help with recovery or finding resources after a flood.",
+       "priority": "medium",
+       "category": "recovery",
+       "source_doc": "https://www2.gov.bc.ca/assets/gov/public-safety-and-emergency-services/emergency-preparedness-response-recovery/embc/preparedbc/preparedbc-guides/preparedbc_flood_preparedness_guide_fillable.pdf"
+     }
+   ],
+   "sources": [
+     "https://geoweb.dnv.org/Products/Reports/PublicSafety/Mosquito_Report.pdf",
+     "https://guidelines.vancouver.ca/guidelines-flood-plain-standards-requirements.pdf",
+     "https://metrovancouver.org/boards/FloodResiliency/FRE-2024-11-20-AGE.pdf",
+     "https://www2.gov.bc.ca/assets/gov/environment/air-land-water/water/integrated-flood-hazard-mgmt/bc_flood_strategy.pdf",
+     "https://www2.gov.bc.ca/assets/gov/public-safety-and-emergency-services/emergency-preparedness-response-recovery/embc/preparedbc/preparedbc-guides/preparedbc_flood_preparedness_guide_fillable.pdf"
+   ],
+   "generated_at": "2025-11-25T04:19:52.983119+00:00",
+   "pipeline_start_time": "2025-11-25T04:18:28.428079+00:00",
+   "pipeline_end_time": "2025-11-25T04:19:58.349176+00:00",
+   "total_processing_seconds": 89.921097
+ },
+ "evaluation": {
+   "accuracy": {
+     "score": 4.0,
+     "justification": "Most sources cited are from official documents and local government websites, indicating a high level of reliability. However, some sources may not be directly related to flood preparedness, which slightly lowers the score.",
+     "issues": []
+   },
+   "clarity": {
+     "score": 4.0,
+     "justification": "The language used is generally clear and easy to understand, with minimal technical jargon. However, a few phrases could be simplified further for better comprehension.",
+     "issues": []
+   },
+   "completeness": {
+     "score": 5.0,
+     "justification": "The plan covers all essential preparedness categories, including communication, evacuation, property protection, insurance, family planning, and emergency kits.",
+     "issues": []
+   },
+   "relevance": {
+     "score": 5.0,
+     "justification": "The guidance is tailored specifically to Vancouver, BC, with references to local flood risks and resources, making it highly relevant to the area.",
+     "issues": []
+   },
+   "coherence": {
+     "score": 4.0,
+     "phase_errors": [],
+     "duplicate_actions": [],
+     "contradictions": [],
+     "justification": "The guidance flows logically from before to during to after a flood, with a clear structure. However, there are some minor redundancies in actions that could be streamlined for better clarity.",
+     "issues": []
+   },
+   "overall_score": 4.4,
+   "passes_threshold": true,
+   "overall_confidence": "high",
+   "weights": {
+     "accuracy": 0.25,
+     "clarity": 0.15,
+     "completeness": 0.2,
+     "relevance": 0.2,
+     "coherence": 0.2
+   },
+   "thresholds": {
+     "accuracy": 4,
+     "clarity": 3.5,
+     "completeness": 3.5,
+     "relevance": 3.5,
+     "coherence": 4
+   },
+   "recommendation": "APPROVE"
+ },
+ "cost_summary": {
+   "total_calls": 7,
+   "total_tokens": 21307,
+   "total_cost_usd": 0.005021,
+   "by_agent": {
+     "GovDocAgent": {
+       "calls": 1,
+       "tokens": 335,
+       "cost_usd": 0.000117,
+       "operations": [
+         "rerank_documents"
+       ]
+     },
+     "ActionPlanAgent": {
+       "calls": 5,
+       "tokens": 13703,
+       "cost_usd": 0.003684,
+       "operations": [
+         "extract_actions"
+       ]
+     },
+     "EvaluatorAgent": {
+       "calls": 1,
+       "tokens": 7269,
+       "cost_usd": 0.00122,
+       "operations": [
+         "evaluate_plan"
+       ]
+     }
+   },
+   "by_operation": {
+     "rerank_documents": {
+       "calls": 1,
+       "tokens": 335,
+       "cost_usd": 0.000117
+     },
+     "extract_actions": {
+       "calls": 5,
+       "tokens": 13703,
+       "cost_usd": 0.003684
+     },
+     "evaluate_plan": {
+       "calls": 1,
+       "tokens": 7269,
+       "cost_usd": 0.00122
+     }
+   },
+   "by_model": {
+     "gpt-4o-mini": {
+       "calls": 7,
+       "tokens": 21307,
+       "cost_usd": 0.005021
+     }
+   }
+ }
+}
+
