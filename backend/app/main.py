@@ -3,12 +3,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import uvicorn
+import os
 
 from app.services.rag_service import RAGService
 from app.services.weather_service import WeatherService
 from app.services.social_media_service import SocialMediaService
+from app.services.predictor_service import ValidatedFloodPredictor
+
+from .api import predict
+
 
 app = FastAPI(title="Flood Prediction Communication System", version="1.0.0")
+DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 
 # CORS middleware for frontend communication
 app.add_middleware(
@@ -19,10 +25,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(predict.router)
+
 # Initialize services
 rag_service = RAGService()
 weather_service = WeatherService()
 social_media_service = SocialMediaService()
+predictor_service = ValidatedFloodPredictor(data_dir=DATA_DIR)
 
 # Pydantic models
 class ChatMessage(BaseModel):
