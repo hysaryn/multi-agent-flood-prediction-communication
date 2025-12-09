@@ -8,7 +8,7 @@ import os
 from app.services.rag_service import RAGService
 from app.services.weather_service import WeatherService
 from app.services.social_media_service import SocialMediaService
-from .services.location_service import LocationIntakeAgent
+from .services.location_service import get_location_info
 from app.services.predictor_service import ValidatedFloodPredictor
 
 from .api import predict
@@ -32,7 +32,6 @@ app.include_router(predict.router)
 rag_service = RAGService(docs_path="Alert Guides Docs")
 weather_service = WeatherService()
 social_media_service = SocialMediaService()
-location_agent = LocationIntakeAgent()
 predictor_service = ValidatedFloodPredictor(data_dir=DATA_DIR)
 
 @app.get("/locate")
@@ -41,15 +40,10 @@ async def locate(q: str):
     Example: /locate?q=Hope, BC  或 /locate?q=49.377,-121.441
     """
     try:
-        result = await location_agent.get_location_info(q)
+        result = await get_location_info(q)
         return result.model_dump()  # 如果是 Pydantic 模型
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-# Initialize RAG at startup
-@app.on_event("startup")
-async def _startup():
-    await rag_service.startup()
 
 # ---------- Models ----------
 class ChatMessage(BaseModel):
