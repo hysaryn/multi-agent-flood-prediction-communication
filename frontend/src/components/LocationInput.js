@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { MapPin, Search, X } from 'lucide-react';
 
-const LocationInput = ({ onLocationChange, defaultLocation = "Hope, BC" }) => {
+const LocationInput = ({ onLocationChange, defaultLocation = "Vancouver, BC" }) => {
   const [location, setLocation] = useState(defaultLocation);
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState('');

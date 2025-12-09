@@ -4,14 +4,11 @@ import Header from './components/Header';
 import DischargePrediction from './components/DischargePrediction';
 import SeverityAssessment from './components/SeverityAssessment';
 import ActionPlan from './components/ActionPlan';
-import InformationTabs from './components/InformationTabs';
-import Chatbot from './components/Chatbot';
 import LocationInput from './components/LocationInput';
 
 function App() {
-  const [activeTab, setActiveTab] = useState('OfficialGuide');
   const [dischargeData, setDischargeData] = useState(null);
-  const [location, setLocation] = useState('Hope, BC');
+  const [location, setLocation] = useState('Vancouver, BC');
   const [predictionData, setPredictionData] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -105,16 +102,6 @@ function App() {
             <ActionPlan />
           </div>
         </div>
-        
-        {/* Additional Information Tabs - Full Width Below */}
-        <InformationTabs 
-          activeTab={activeTab} 
-          setActiveTab={setActiveTab}
-          location={location}
-        />
-        
-        {/* Chatbot */}
-        <Chatbot location={location} />
       </div>
     </div>
   );
