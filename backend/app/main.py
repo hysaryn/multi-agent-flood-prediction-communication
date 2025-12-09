@@ -8,6 +8,7 @@ import os
 from app.services.rag_service import RAGService
 from app.services.weather_service import WeatherService
 from app.services.social_media_service import SocialMediaService
+from .services.location_service import get_location_info
 from app.services.predictor_service import ValidatedFloodPredictor
 
 from .api import predict
@@ -16,10 +17,10 @@ from .api import predict
 app = FastAPI(title="Flood Prediction Communication System", version="1.0.0")
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 
-# CORS middleware for frontend communication
+# CORS for frontend communication
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # React dev server
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,12 +29,23 @@ app.add_middleware(
 app.include_router(predict.router)
 
 # Initialize services
-rag_service = RAGService()
+rag_service = RAGService(docs_path="Alert Guides Docs")
 weather_service = WeatherService()
 social_media_service = SocialMediaService()
 predictor_service = ValidatedFloodPredictor(data_dir=DATA_DIR)
 
-# Pydantic models
+@app.get("/locate")
+async def locate(q: str):
+    """
+    Example: /locate?q=Hope, BC  或 /locate?q=49.377,-121.441
+    """
+    try:
+        result = await get_location_info(q)
+        return result.model_dump()  # 如果是 Pydantic 模型
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ---------- Models ----------
 class ChatMessage(BaseModel):
     message: str
     location: Optional[str] = None
@@ -57,25 +69,23 @@ class SocialMediaResponse(BaseModel):
     sentiment: str
     key_topics: List[str]
 
+class RAGAsk(BaseModel):
+    query: str
+
+# ---------- Routes ----------
 @app.get("/")
 async def root():
     return {"message": "Flood Prediction Communication System API"}
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat_with_bot(message: ChatMessage):
-    """Main chatbot endpoint that integrates all information sources"""
+    """Main chatbot endpoint integrating all data sources."""
     try:
-        # Get information from all sources
-        official_guide = await rag_service.get_relevant_content(message.message)
-        live_data = await weather_service.get_current_conditions(message.location)
-        social_summary = await social_media_service.get_summary()
-        
-        # TODO: Integrate all sources using LLM
-        response = f"Based on official guidelines, current conditions, and social media insights: {message.message}"
-        
+        content, _ = await rag_service.get_relevant_content(message.message or "")
+        response = f"Based on official guidelines: {content[:160]}..."
         return ChatResponse(
             response=response,
-            sources=["official_guide", "weather_api", "social_media"],
+            sources=["official_guide"],
             confidence=0.85
         )
     except Exception as e:
@@ -83,9 +93,19 @@ async def chat_with_bot(message: ChatMessage):
 
 @app.get("/official-guide", response_model=OfficialGuideResponse)
 async def get_official_guide(query: str = ""):
-    """Get official guide content using RAG"""
+    """Retrieve official guide content using RAG."""
     try:
-        content, sources = await rag_service.get_relevant_content(query)
+        q = query or "What to prepare 7 days before a flood in BC?"
+        content, sources = await rag_service.get_relevant_content(q)
+        return OfficialGuideResponse(content=content, sources=sources)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/rag/ask", response_model=OfficialGuideResponse)
+async def rag_ask(req: RAGAsk):
+    """Query the RAG engine with a question."""
+    try:
+        content, sources = await rag_service.get_relevant_content(req.query)
         return OfficialGuideResponse(content=content, sources=sources)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
