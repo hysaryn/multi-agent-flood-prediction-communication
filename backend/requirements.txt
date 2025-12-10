@@ -23,7 +23,7 @@ autogen-ext[grpc]
 # --- Multi-agent MCP (browser integration) ---
 playwright
 nest-asyncio
-# agents  # Commented out - wrong package installed, MCP functionality optional
+openai-agents
 
 # --- Async utilities ---
 anyio
