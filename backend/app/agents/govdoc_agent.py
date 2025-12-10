@@ -885,7 +885,7 @@ async def main():
     print(f"⏰ Pipeline started at {pipeline_start.strftime('%Y-%m-%d %H:%M:%S')}\n")
 
     resp = await runtime.send_message(
-        Message(content="Brisbane, Queensland"),
+        Message(content="Montreal, Quebec"),
         AgentId("GovDoc", "default")
     )
     

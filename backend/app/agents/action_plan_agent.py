@@ -21,6 +21,7 @@ import json
 import asyncio
 import re
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 
 
 class ActionPlanAgent(RoutedAgent):
@@ -636,28 +637,23 @@ EXISTING ACTIONS (do NOT duplicate - summarize NEW actions only):
 TASK: Summarize actions from this document that address the revision notes above.
 Focus on actions that fill the identified gaps.
 
+TARGET: Extract 10-20 actions from this document that address revision notes, distributed as:
+- BEFORE: 6-12 actions - preparation, planning, protection, insurance, emergency kits
+- DURING: 2-5 actions - evacuation, immediate safety, utility shutoff
+- AFTER: 2-4 actions - cleanup, documentation, recovery, insurance claims
+
 EXTRACTION RULES:
 1. Summarize actions from the document text (no hallucination)
 2. Focus on actions that address the revision notes
 3. EXCLUDE: government infrastructure projects, policy frameworks, municipal planning
 4. Prioritize location-specific details when available
-
-TARGET: Summarize 5-15 actions that address the gaps, distributed as:
-- BEFORE: 3-8 actions
-- DURING: 1-4 actions  
-- AFTER: 1-3 actions
-
-PRIORITIZE:
-- Actions that directly address issues in revision notes
-- Location-specific details for {location}
-- Essential actions missing from existing plan
+5. Be thorough - extract 10-20 actions if the document contains enough information
 
 Return ONLY valid JSON array:
 [
   {{
     "title": "...",
     "description": "... (specific details)",
-    "priority": "high|medium|low",
     "category": "evacuation|property_protection|emergency_kit|communication|insurance|family_plan",
     "phase": "before|during|after"
   }}
@@ -765,10 +761,10 @@ EXTRACTION RULES:
 3. EXCLUDE: government infrastructure projects, policy frameworks, municipal planning
 4. Focus on actions that fill gaps identified in revision notes
 
-TARGET: Extract 5-15 NEW actions that address the revision notes, distributed as:
-- BEFORE: 3-8 actions - preparation, planning, protection
-- DURING: 1-4 actions - evacuation, immediate safety
-- AFTER: 1-3 actions - cleanup, documentation, recovery
+TARGET: Extract 10-20 NEW actions that address the revision notes, distributed as:
+- BEFORE: 6-12 actions - preparation, planning, protection, insurance, emergency kits
+- DURING: 2-5 actions - evacuation, immediate safety, utility shutoff
+- AFTER: 2-4 actions - cleanup, documentation, recovery, insurance claims
 
 MUST INCLUDE if mentioned in revision notes (even if generic):
 ✅ Flood insurance purchase/claims (if missing)
@@ -777,12 +773,6 @@ MUST INCLUDE if mentioned in revision notes (even if generic):
 ✅ Evacuation procedures (if missing)
 ✅ Utility shutoff (if missing)
 ✅ Damage documentation (if missing)
-
-PRIORITIZE location-specific details:
-- Named waterways, neighborhoods, or local agencies
-- Specific programs or subsidies for {location}
-- Regional flood history or unique risks
-- Local emergency contacts or shelters
 
 IMPORTANT: 
 - Extract ONLY NEW actions not in existing list
@@ -795,7 +785,6 @@ Return ONLY valid JSON array:
   {{
     "title": "...",
     "description": "... (specific details with quantities, times, locations)",
-    "priority": "high|medium|low",
     "category": "evacuation|property_protection|emergency_kit|communication|insurance|family_plan",
     "phase": "before|during|after"
   }}
@@ -914,15 +903,15 @@ TARGET AUDIENCE: Individual homeowners and renters in {location}
 Document: {doc['title']}
 Source: {doc['url']}
 
-TRACTION RULES:
+EXTRACTION RULES:
 1. Extract actions from the document text (no hallucination)
 2. INCLUDE both location-specific AND essential universal actions
 3. EXCLUDE: government infrastructure projects, policy frameworks, municipal planning
 
-TARGET: 20-30 total actions distributed as:
-- BEFORE: 12-18 actions (50-60%) - preparation, planning, protection
-- DURING: 4-8 actions (20-30%) - evacuation, immediate safety
-- AFTER: 3-6 actions (10-20%) - cleanup, documentation, recovery
+TARGET: Extract 15-20 actions from this document, distributed as:
+- BEFORE: 8-12 actions - preparation, planning, protection, insurance, emergency kits
+- DURING: 3-5 actions - evacuation, immediate safety, utility shutoff
+- AFTER: 2-4 actions - cleanup, documentation, recovery, insurance claims
 
 MUST INCLUDE if mentioned (even if generic):
 ✅ Flood insurance purchase/claims
@@ -932,23 +921,17 @@ MUST INCLUDE if mentioned (even if generic):
 ✅ Utility shutoff (gas/power/water)
 ✅ Damage documentation
 
-PRIORITIZE location-specific details:
-- Named waterways, neighborhoods, or local agencies
-- Specific programs or subsidies for {location}
-- Regional flood history or unique risks
-- Local emergency contacts or shelters
-
 IMPORTANT: 
-- Distribute across all three phases
-- Avoid duplicates with other documents
-- Be specific in descriptions
+- Extract 15-20 actions total if the document contains enough information
+- Distribute across all three phases as specified above
+- Be thorough and extract all relevant actions
+- Be specific in descriptions with details, quantities, times, locations
 
 Return ONLY valid JSON array:
 [
   {{
     "title": "Purchase flood insurance",
     "description": "Contact insurance provider to obtain flood coverage...",
-    "priority": "high",
     "category": "insurance",
     "phase": "before"
   }}
@@ -1105,7 +1088,6 @@ JSON:"""
                     action = Action(
                         title=item["title"],
                         description=item["description"],
-                        priority=item["priority"],
                         category=item["category"],
                         source_doc=doc["url"]
                     )
@@ -1125,9 +1107,105 @@ JSON:"""
             print(f"[ActionPlanAgent]   ❌ Error: {e}")
             return []
     
+    def _code_based_deduplicate_titles(self, actions_with_phases: List[Tuple[Action, str]]) -> List[Tuple[Action, str]]:
+        """
+        First-pass deduplication: Remove actions with similar titles using string similarity.
+        This is fast and catches exact/near-exact duplicates before LLM processing.
+        
+        Args:
+            actions_with_phases: List of (Action, phase) tuples
+        
+        Returns:
+            Deduplicated list with similar titles removed
+        """
+        if len(actions_with_phases) <= 1:
+            return actions_with_phases
+        
+        # Normalize titles for comparison
+        def normalize_title(title: str) -> str:
+            """Normalize title for comparison: lowercase, strip, remove extra spaces"""
+            return ' '.join(title.lower().strip().split())
+        
+        # Normalize by word order (sort words alphabetically) to catch word-order variations
+        def normalize_word_order(title: str) -> str:
+            """Normalize by sorting words - catches 'Shut off utilities' vs 'Utility shutoff'"""
+            words = title.lower().strip().split()
+            return ' '.join(sorted(words))
+        
+        # Calculate similarity between two titles using multiple methods
+        def title_similarity(title1: str, title2: str) -> float:
+            """Calculate similarity ratio between two titles (0.0 to 1.0)
+            Uses both direct comparison and word-order-normalized comparison"""
+            norm1 = normalize_title(title1)
+            norm2 = normalize_title(title2)
+            
+            # Direct similarity
+            direct_sim = SequenceMatcher(None, norm1, norm2).ratio()
+            
+            # Word-order-normalized similarity (catches "Shut off utilities" vs "Utility shutoff")
+            word_order_norm1 = normalize_word_order(title1)
+            word_order_norm2 = normalize_word_order(title2)
+            word_order_sim = SequenceMatcher(None, word_order_norm1, word_order_norm2).ratio()
+            
+            # Return the higher of the two similarities
+            return max(direct_sim, word_order_sim)
+        
+        # Threshold for considering titles as duplicates (0.75 = 75% similar)
+        # Lowered from 0.85 to catch more similar titles like "Review insurance" vs "Review coverage"
+        SIMILARITY_THRESHOLD = 0.75
+        
+        # Track which indices to keep
+        to_keep = [True] * len(actions_with_phases)
+        removed_count = 0
+        
+        # Compare each pair of actions
+        for i in range(len(actions_with_phases)):
+            if not to_keep[i]:
+                continue
+            
+            action_i, phase_i = actions_with_phases[i]
+            title_i = action_i.title
+            
+            for j in range(i + 1, len(actions_with_phases)):
+                if not to_keep[j]:
+                    continue
+                
+                action_j, phase_j = actions_with_phases[j]
+                title_j = action_j.title
+                
+                # Check title similarity
+                similarity = title_similarity(title_i, title_j)
+                
+                if similarity >= SIMILARITY_THRESHOLD:
+                    # They're similar - keep the one with longer/more detailed description
+                    desc_i_len = len(action_i.description or "")
+                    desc_j_len = len(action_j.description or "")
+                    
+                    if desc_i_len >= desc_j_len:
+                        # Keep i, remove j
+                        to_keep[j] = False
+                        removed_count += 1
+                        print(f"[ActionPlanAgent]   🔍 Code dedup: Removed '{title_j}' (similarity: {similarity:.2f} with '{title_i}')")
+                    else:
+                        # Keep j, remove i
+                        to_keep[i] = False
+                        removed_count += 1
+                        print(f"[ActionPlanAgent]   🔍 Code dedup: Removed '{title_i}' (similarity: {similarity:.2f} with '{title_j}')")
+                        break  # i is removed, no need to check more pairs with i
+        
+        # Filter to keep only the ones marked to keep
+        deduplicated = [action for idx, action in enumerate(actions_with_phases) if to_keep[idx]]
+        
+        if removed_count > 0:
+            print(f"[ActionPlanAgent]   🔍 Code-based deduplication: {len(actions_with_phases)} → {len(deduplicated)} actions (removed {removed_count})")
+        
+        return deduplicated
+    
     async def _deduplicate_actions_with_phases(self, actions_with_phases: List[Tuple[Action, str]], ctx: MessageContext) -> List[Tuple[Action, str]]:
         """
-        Remove duplicate actions using LLM to identify semantic duplicates.
+        Remove duplicate actions using two-stage approach:
+        1. Code-based deduplication for similar titles (fast, cheap)
+        2. LLM deduplication for semantic duplicates (nuanced)
         Uses batching for large lists to improve performance.
         
         Args:
@@ -1140,14 +1218,24 @@ JSON:"""
         if len(actions_with_phases) <= 1:
             return actions_with_phases
         
+        # Stage 1: Code-based deduplication for similar titles
+        print(f"[ActionPlanAgent]   Stage 1: Code-based deduplication (title similarity)...")
+        code_deduplicated = self._code_based_deduplicate_titles(actions_with_phases)
+        
+        if len(code_deduplicated) <= 1:
+            return code_deduplicated
+        
+        # Stage 2: LLM deduplication for semantic duplicates
+        print(f"[ActionPlanAgent]   Stage 2: LLM deduplication (semantic similarity)...")
+        
         # For large lists (>30), use batching to reduce latency
         BATCH_SIZE = 30
-        if len(actions_with_phases) > BATCH_SIZE:
-            print(f"[ActionPlanAgent]   Large list ({len(actions_with_phases)} actions), using batched deduplication...")
+        if len(code_deduplicated) > BATCH_SIZE:
+            print(f"[ActionPlanAgent]   Large list ({len(code_deduplicated)} actions), using batched deduplication...")
             # Split into batches and deduplicate each batch
             batches = [
-                actions_with_phases[i:i + BATCH_SIZE]
-                for i in range(0, len(actions_with_phases), BATCH_SIZE)
+                code_deduplicated[i:i + BATCH_SIZE]
+                for i in range(0, len(code_deduplicated), BATCH_SIZE)
             ]
             
             # Deduplicate each batch in parallel
@@ -1188,7 +1276,7 @@ JSON:"""
                 return await self._deduplicate_batch(deduplicated_batches, 0, ctx)
         
         # For smaller lists, process directly
-        return await self._deduplicate_batch(actions_with_phases, 0, ctx)
+        return await self._deduplicate_batch(code_deduplicated, 0, ctx)
     
     async def _deduplicate_batch(self, actions_with_phases: List[Tuple[Action, str]], start_index: int, ctx: MessageContext) -> List[Tuple[Action, str]]:
         """
@@ -1222,8 +1310,35 @@ A duplicate is defined as:
 - Two actions that convey the same or very similar information
 - Actions with different wording but identical meaning
 - Actions that are subsets or variations of each other
+- Actions with titles that have similar meanings (even if worded differently, if they express the same concept, they are duplicates)
+- Actions with different titles but descriptions that indicate the same action/concept
 
-IMPORTANT: Keep the action with the most detailed description if duplicates are found. If descriptions are equally detailed, keep the first one.
+CRITICAL: Check BOTH titles AND descriptions. If the descriptions indicate the same action/concept, they are duplicates even if titles differ.
+
+EXAMPLES of duplicates (these MUST be marked as duplicates):
+- "Prepare an emergency kit" and "Prepare an emergency kit for evacuation" → DUPLICATE (both about preparing emergency kit)
+- "Purchase flood insurance" and "Buy flood insurance coverage" → DUPLICATE (same concept, different wording)
+- "Create a family communication plan" and "Develop a family communication plan" → DUPLICATE (identical meaning)
+- "Document damage after flooding" and "Document damages incurred during the flood" → DUPLICATE (both about documenting damage for insurance, even though titles differ)
+- "Take photographs of damage" and "Photograph property damage for claims" → DUPLICATE (same action, different wording)
+- "Review and update home insurance" and "Review your flood insurance coverage" → DUPLICATE (both about reviewing/checking insurance coverage, same concept)
+- "Know your evacuation routes" and "Identify evacuation routes" → DUPLICATE (both about learning/familiarizing with evacuation routes, same action)
+- "Review and update home insurance" (description: "Check your home insurance policy to ensure it covers flood damage") and "Review your flood insurance coverage" (description: "Ensure that your flood insurance policy is current") → DUPLICATE (same action: reviewing insurance for flood coverage)
+- "Shut off utilities" and "Shut off utilities if safe" → DUPLICATE (same action, one just has a qualifier - both about turning off gas/electricity/water)
+- "Shut off utilities" (description: "Before leaving your home, turn off gas, electricity, and water") and "Shut off utilities if safe" (description: "Turn off gas, electricity, and water supplies if you are evacuating") → DUPLICATE (same action with same description meaning)
+- "Document damage after the flood" and "Document damage" → DUPLICATE (same action, one just has a time qualifier - both about documenting damage for insurance)
+- "Shut off utilities" and "Utility shutoff" → DUPLICATE (same action, just different word order/formatting)
+- "Document damage after the flood" (description: "document any flood damage to your property with photos and notes for insurance claims") and "Document damage" (description: "Take photographs and make a detailed inventory of damages to your property and belongings after the flood for insurance claims") → DUPLICATE (same action: documenting damage for insurance)
+
+IMPORTANT: 
+- Check descriptions carefully - if descriptions indicate the same action/concept, mark as duplicate even if titles are different
+- If titles have similar meanings (like "Review insurance" vs "Review coverage"), mark them as duplicates
+- Actions about the same topic with different verbs (like "Know routes" vs "Identify routes") are duplicates if they mean the same thing
+- Titles that are almost identical except for qualifiers (like "Shut off utilities" vs "Shut off utilities if safe") are duplicates
+- Titles with same words in different order (like "Shut off utilities" vs "Utility shutoff") are duplicates
+- Titles that differ only by time qualifiers (like "Document damage" vs "Document damage after the flood") are duplicates if they describe the same action
+- Be aggressive in marking duplicates - when in doubt, if they're about the same action/concept, mark as duplicate
+- Keep the action with the most detailed description if duplicates are found. If descriptions are equally detailed, keep the first one.
 
 Here are {len(actions_list)} actions to analyze:
 
@@ -1245,42 +1360,44 @@ Return ONLY valid JSON, no markdown, no explanation."""
             message = TextMessage(content=prompt, source="user")
             response = await self._llm.on_messages([message], ctx.cancellation_token)
             
-            # Track token usage - check inner_messages first (autogen stores usage there)
-            usage_found = False
-            if hasattr(response, 'inner_messages') and response.inner_messages:
-                for msg in response.inner_messages:
-                    if hasattr(msg, 'usage'):
-                        usage = msg.usage
-                        tracker.record_usage(
-                            agent_name="ActionPlanAgent",
-                            model="gpt-4o-mini",
-                            prompt_tokens=usage.prompt_tokens,
-                            completion_tokens=usage.completion_tokens,
-                            operation="deduplicate_actions"
-                        )
-                        usage_found = True
-                        break
-                    elif hasattr(msg, 'response') and hasattr(msg.response, 'usage'):
-                        usage = msg.response.usage
-                        tracker.record_usage(
-                            agent_name="ActionPlanAgent",
-                            model="gpt-4o-mini",
-                            prompt_tokens=usage.prompt_tokens,
-                            completion_tokens=usage.completion_tokens,
-                            operation="deduplicate_actions"
-                        )
-                        usage_found = True
-                        break
-            
-            if not usage_found:
-                prompt_text = message.content if hasattr(message, 'content') else ""
-                tracker.record_from_openai_response(
-                    agent_name="ActionPlanAgent",
-                    model="gpt-4o-mini",
-                    response=response,
-                    operation="deduplicate_actions",
-                    prompt_text=prompt_text
-                )
+            # NOTE: Token usage tracking is SKIPPED for deduplication to allow fair comparison
+            # with other architectures that don't have LLM-based deduplication
+            # Token tracking commented out for deduplication operations
+            # usage_found = False
+            # if hasattr(response, 'inner_messages') and response.inner_messages:
+            #     for msg in response.inner_messages:
+            #         if hasattr(msg, 'usage'):
+            #             usage = msg.usage
+            #             tracker.record_usage(
+            #                 agent_name="ActionPlanAgent",
+            #                 model="gpt-4o-mini",
+            #                 prompt_tokens=usage.prompt_tokens,
+            #                 completion_tokens=usage.completion_tokens,
+            #                 operation="deduplicate_actions"
+            #             )
+            #             usage_found = True
+            #             break
+            #         elif hasattr(msg, 'response') and hasattr(msg.response, 'usage'):
+            #             usage = msg.response.usage
+            #             tracker.record_usage(
+            #                 agent_name="ActionPlanAgent",
+            #                 model="gpt-4o-mini",
+            #                 prompt_tokens=usage.prompt_tokens,
+            #                 completion_tokens=usage.completion_tokens,
+            #                 operation="deduplicate_actions"
+            #             )
+            #             usage_found = True
+            #             break
+            # 
+            # if not usage_found:
+            #     prompt_text = message.content if hasattr(message, 'content') else ""
+            #     tracker.record_from_openai_response(
+            #         agent_name="ActionPlanAgent",
+            #         model="gpt-4o-mini",
+            #         response=response,
+            #         operation="deduplicate_actions",
+            #         prompt_text=prompt_text
+            #     )
             
             content = response.chat_message.content.strip()
             

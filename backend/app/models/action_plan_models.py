@@ -5,7 +5,6 @@ class Action(BaseModel):
     """A single actionable item for flood preparation/response."""
     title: str                    # e.g., "Create Emergency Kit"
     description: str              # Detailed description
-    priority: Literal["high", "medium", "low"]
     category: str                 # e.g., "evacuation", "property", "communication"
     source_doc: str | None = None  # URL of source document
     
